@@ -36,13 +36,30 @@ struct CodexSessionsApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private var globalShortcutRegistrar: GlobalShortcutRegistrar?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         NSApp.activate(ignoringOtherApps: true)
+
+        let registrar = GlobalShortcutRegistrar {
+            Self.showApp()
+        }
+        registrar.register()
+        globalShortcutRegistrar = registrar
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        globalShortcutRegistrar?.unregister()
         NotificationCenter.default.post(name: .appWillTerminateProcessClients, object: nil)
+    }
+
+    private static func showApp() {
+        NSApp.unhide(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.windows.first?.makeKeyAndOrderFront(nil)
+        NSApp.windows.first?.orderFrontRegardless()
+        NotificationCenter.default.post(name: .focusPromptField, object: nil)
     }
 }
 
