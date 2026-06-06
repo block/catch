@@ -26,10 +26,17 @@ struct SessionRowView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Text(session.displayTitle)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(session.displayTitle)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text(session.provider.badge)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+            }
 
             Spacer(minLength: 10)
 

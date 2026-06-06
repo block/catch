@@ -1,7 +1,7 @@
 import Foundation
 
 enum ACPClientError: Error, LocalizedError {
-    case codexACPNotFound(String)
+    case executableNotFound(String, [String])
     case processNotRunning
     case invalidResponse(String)
     case rpcError(String)
@@ -9,10 +9,10 @@ enum ACPClientError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .codexACPNotFound(let path):
-            return "codex-acp was not found at \(path)."
+        case .executableNotFound(let provider, let paths):
+            return "\(provider) ACP executable was not found. Checked: \(paths.joined(separator: ", "))."
         case .processNotRunning:
-            return "codex-acp is not running."
+            return "ACP server is not running."
         case .invalidResponse(let method):
             return "Invalid ACP response for \(method)."
         case .rpcError(let message):
@@ -20,6 +20,21 @@ enum ACPClientError: Error, LocalizedError {
         case .timeout(let method):
             return "Timed out waiting for \(method)."
         }
+    }
+}
+
+struct ACPClientConfiguration {
+    var provider: AgentProvider
+    var executablePaths: [String]
+    var arguments: [String] = []
+    var environment: [String: String] = [:]
+
+    var displayName: String {
+        provider.displayName
+    }
+
+    func resolvedExecutablePath() -> String? {
+        executablePaths.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 }
 
@@ -32,10 +47,9 @@ final class ACPClient {
         let completion: (Result<JSONObject, Error>) -> Void
     }
 
-    private let executablePath: String
-    private let codexPath: String
+    private let configuration: ACPClientConfiguration
     private let cwd: URL
-    private let queue = DispatchQueue(label: "CodexSessions.ACPClient")
+    private let queue: DispatchQueue
     private let process = Process()
     private let input = Pipe()
     private let output = Pipe()
@@ -48,22 +62,22 @@ final class ACPClient {
     private var updateHandler: UpdateHandler?
 
     init(
-        executablePath: String = "/opt/homebrew/bin/codex-acp",
-        codexPath: String = "/Applications/Codex.app/Contents/Resources/codex",
+        configuration: ACPClientConfiguration,
         cwd: URL
     ) {
-        self.executablePath = executablePath
-        self.codexPath = codexPath
+        self.configuration = configuration
         self.cwd = cwd
+        self.queue = DispatchQueue(label: "CodexSessions.ACPClient.\(configuration.provider.rawValue)")
     }
 
     func start(onUpdate: @escaping UpdateHandler) throws {
-        guard FileManager.default.isExecutableFile(atPath: executablePath) else {
-            throw ACPClientError.codexACPNotFound(executablePath)
+        guard let executablePath = configuration.resolvedExecutablePath() else {
+            throw ACPClientError.executableNotFound(configuration.displayName, configuration.executablePaths)
         }
 
         updateHandler = onUpdate
         process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = configuration.arguments
         process.currentDirectoryURL = cwd
         process.standardInput = input
         process.standardOutput = output
@@ -71,8 +85,8 @@ final class ACPClient {
 
         var environment = ProcessInfo.processInfo.environment
         environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        if FileManager.default.isExecutableFile(atPath: codexPath) {
-            environment["CODEX_PATH"] = codexPath
+        configuration.environment.forEach { key, value in
+            environment[key] = value
         }
         environment["INITIAL_AGENT_MODE"] = "agent-full-access"
         process.environment = environment
@@ -85,7 +99,7 @@ final class ACPClient {
         }
         process.terminationHandler = { [weak self] process in
             self?.queue.async {
-                let message = "codex-acp exited with status \(process.terminationStatus)"
+                let message = "\(self?.configuration.displayName ?? "ACP") exited with status \(process.terminationStatus)"
                 self?.failAllPending(ACPClientError.rpcError(message))
             }
         }
@@ -133,7 +147,7 @@ final class ACPClient {
             throw ACPClientError.invalidResponse("session/list")
         }
 
-        let sessions = rawSessions.compactMap(Self.decodeSession)
+        let sessions = rawSessions.compactMap { decodeSession($0) }
         let cursor = response["nextCursor"] as? String
         return (sessions, cursor)
     }
@@ -282,25 +296,41 @@ final class ACPClient {
             return
         }
 
-        updateHandler?(SessionUpdateEvent(sessionID: sessionID, summary: Self.summarize(update), timestamp: Date()))
+        updateHandler?(
+            SessionUpdateEvent(
+                provider: configuration.provider,
+                sessionID: sessionID,
+                summary: Self.summarize(update),
+                timestamp: Date()
+            )
+        )
     }
 
-    private static func decodeSession(_ object: JSONObject) -> CodexSession? {
-        guard let id = object["sessionId"] as? String else {
+    private func decodeSession(_ object: JSONObject) -> CodexSession? {
+        guard let id = object["sessionId"] as? String ?? object["id"] as? String else {
             return nil
         }
 
-        let title = object["title"] as? String ?? ""
-        let cwd = object["cwd"] as? String ?? ""
+        let title = object["title"] as? String
+            ?? object["name"] as? String
+            ?? object["summary"] as? String
+            ?? ""
+        let cwd = object["cwd"] as? String
+            ?? object["workingDirectory"] as? String
+            ?? object["projectPath"] as? String
+            ?? ""
         let updatedAt = (object["updatedAt"] as? String).flatMap(Self.parseACPDate)
+            ?? (object["lastModified"] as? String).flatMap(Self.parseACPDate)
+            ?? (object["createdAt"] as? String).flatMap(Self.parseACPDate)
 
         return CodexSession(
-            id: id,
+            provider: configuration.provider,
+            sessionID: id,
             cwd: cwd,
             title: title,
             updatedAt: updatedAt,
             status: .idle,
-            lastEvent: "Listed by ACP"
+            lastEvent: "Listed by \(configuration.displayName)"
         )
     }
 
