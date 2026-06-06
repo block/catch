@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -28,9 +29,14 @@ struct ContentView: View {
             promptFocused = true
         }
         .background {
-            KeyboardMonitor { direction in
-                store.moveSelection(direction: direction)
-            }
+            KeyboardMonitor(
+                onMove: { direction in
+                    store.moveSelection(direction: direction)
+                },
+                onEscape: {
+                    NSApp.hide(nil)
+                }
+            )
         }
     }
 }

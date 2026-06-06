@@ -3,9 +3,10 @@ import SwiftUI
 
 struct KeyboardMonitor: NSViewRepresentable {
     let onMove: (SelectionDirection) -> Void
+    let onEscape: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onMove: onMove)
+        Coordinator(onMove: onMove, onEscape: onEscape)
     }
 
     func makeNSView(context: Context) -> NSView {
@@ -22,10 +23,12 @@ struct KeyboardMonitor: NSViewRepresentable {
 
     final class Coordinator {
         private let onMove: (SelectionDirection) -> Void
+        private let onEscape: () -> Void
         private var monitor: Any?
 
-        init(onMove: @escaping (SelectionDirection) -> Void) {
+        init(onMove: @escaping (SelectionDirection) -> Void, onEscape: @escaping () -> Void) {
             self.onMove = onMove
+            self.onEscape = onEscape
         }
 
         func start() {
@@ -42,6 +45,9 @@ struct KeyboardMonitor: NSViewRepresentable {
                     return nil
                 case 125:
                     self?.onMove(.down)
+                    return nil
+                case 53:
+                    self?.onEscape()
                     return nil
                 default:
                     return event
