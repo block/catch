@@ -3,7 +3,11 @@ import Foundation
 @MainActor
 final class SessionStore: ObservableObject {
     @Published var sessions: [CodexSession] = []
-    @Published var selectedSessionID: String?
+    @Published var selectedSessionID: String? {
+        didSet {
+            ensureSelection()
+        }
+    }
     @Published var prompt = ""
     @Published var isConnected = false
     @Published var errorMessage: String?
@@ -203,9 +207,7 @@ final class SessionStore: ObservableObject {
             ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
         }
 
-        if selectedSessionID == nil || !sessions.contains(where: { $0.id == selectedSessionID }) {
-            selectedSessionID = sessions.first?.id
-        }
+        ensureSelection()
     }
 
     private func upsert(_ session: CodexSession) {
@@ -213,6 +215,20 @@ final class SessionStore: ObservableObject {
             sessions[index] = session
         } else {
             sessions.insert(session, at: 0)
+        }
+        ensureSelection()
+    }
+
+    private func ensureSelection() {
+        guard !sessions.isEmpty else {
+            if selectedSessionID != nil {
+                selectedSessionID = nil
+            }
+            return
+        }
+
+        if selectedSessionID == nil || !sessions.contains(where: { $0.id == selectedSessionID }) {
+            selectedSessionID = sessions.first?.id
         }
     }
 
