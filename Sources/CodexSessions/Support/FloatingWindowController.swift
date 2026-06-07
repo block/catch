@@ -28,6 +28,12 @@ final class FloatingWindowController: NSObject {
         panel.makeKeyAndOrderFront(nil)
         panel.orderFrontRegardless()
         NotificationCenter.default.post(name: .focusPromptField, object: nil)
+
+        if isTestBuild {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                panel.orderBack(nil)
+            }
+        }
     }
 
     func hideWindow() {
