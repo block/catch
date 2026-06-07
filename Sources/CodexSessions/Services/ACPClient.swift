@@ -300,10 +300,39 @@ final class ACPClient {
             SessionUpdateEvent(
                 provider: configuration.provider,
                 sessionID: sessionID,
+                status: Self.status(for: update),
                 summary: Self.summarize(update),
                 timestamp: Date()
             )
         )
+    }
+
+    private static func status(for update: JSONObject) -> SessionStatus {
+        let kind = (update["sessionUpdate"] as? String ?? "").lowercased()
+        let rawStatus = update["status"] as? String ?? ""
+        let normalizedStatus = rawStatus.lowercased()
+
+        if [
+            "complete",
+            "completed",
+            "done",
+            "failed",
+            "cancelled",
+            "canceled"
+        ].contains(normalizedStatus) {
+            return .idle
+        }
+
+        if [
+            "task_complete",
+            "turn_complete",
+            "session_idle",
+            "agent_turn_complete"
+        ].contains(kind) {
+            return .idle
+        }
+
+        return .working
     }
 
     private func decodeSession(_ object: JSONObject) -> CodexSession? {

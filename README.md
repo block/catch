@@ -1,36 +1,46 @@
-# catch README
+# Catch
 
-Congrats, project leads! You got a new project to grow!
+Catch is a SwiftPM macOS app for quickly finding and continuing local agent sessions from Codex, Claude Code, and Goose.
 
-This stub is meant to help you form a strong community around your work. It's yours to adapt, and may 
-diverge from this initial structure. Just keep the files seeded in this repo, and the rest is yours to evolve! 
+## Build And Run
 
-## Introduction
+Use the project-local macOS run script:
 
-Orient users to the project here. This is a good place to start with an assumption
-that the user knows very little - so start with the Big Picture and show how this
-project fits into it.
+```bash
+./script/build_and_run.sh
+```
 
-Then maybe a dive into what this project does.
+The script follows the Build macOS Apps workflow:
 
-Diagrams and other visuals are helpful here. Perhaps code snippets showing usage.
+- stops any currently running `CodexSessions` process
+- builds the SwiftPM executable with `swift build`
+- stages a macOS `.app` bundle at `~/Applications/CodexSessions.app`
+- launches the app bundle with `/usr/bin/open -n`
 
-Project leads should complete, alongside this `README`:
+The Codex app Run action is wired to the same script through `.codex/environments/environment.toml`.
 
-* [CODEOWNERS](./CODEOWNERS) - set project lead(s)
-* [CONTRIBUTING.md](./CONTRIBUTING.md) - Fill out how to: install prereqs, build, test, run, access CI, chat, discuss, file issues
-* [Bug-report.md](.github/ISSUE_TEMPLATE/bug-report.md) - Fill out `Assignees` add codeowners @names
-* [config.yml](.github/ISSUE_TEMPLATE/config.yml) - remove "(/add your discord channel..)" and replace the url with your Discord channel if applicable
+## Verification And Debugging
 
-The other files in this template repo may be used as-is:
+```bash
+./script/build_and_run.sh --verify
+```
 
-* [GOVERNANCE.md](./GOVERNANCE.md)
-* [LICENSE](./LICENSE)
+Builds, launches, and confirms the `CodexSessions` process is running.
 
-## Project Resources
+```bash
+./script/build_and_run.sh --logs
+```
 
-| Resource                                   | Description                                                                    |
-| ------------------------------------------ | ------------------------------------------------------------------------------ |
-| [CODEOWNERS](./CODEOWNERS)                 | Outlines the project lead(s)                                                   |
-| [GOVERNANCE.md](./GOVERNANCE.md)           | Project governance                                                             |
-| [LICENSE](./LICENSE)                       | Apache License, Version 2.0                                                    |
+Builds, launches, and streams unified logs for the app process.
+
+```bash
+./script/build_and_run.sh --telemetry
+```
+
+Builds, launches, and streams unified logs filtered to the app bundle identifier.
+
+```bash
+./script/build_and_run.sh --debug
+```
+
+Builds the app bundle and opens the app executable in `lldb`.

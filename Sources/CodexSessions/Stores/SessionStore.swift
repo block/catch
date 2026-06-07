@@ -26,6 +26,8 @@ final class SessionStore: ObservableObject {
     }()
     private var clients: [ProviderClient] = []
     private var refreshTask: Task<Void, Never>?
+    private var lastActivityBySessionID: [String: Date] = [:]
+    private let workingStatusTimeout: TimeInterval = 60
 
     var selectedSession: CodexSession? {
         sessions.first { $0.id == selectedSessionID }
@@ -192,20 +194,29 @@ final class SessionStore: ObservableObject {
     }
 
     private func mergeListedSessions(_ listed: [CodexSession]) {
+        let now = Date()
         var byID = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
 
         for listedSession in listed {
             var session = listedSession
             if let existing = byID[listedSession.id] {
-                session.status = existing.status == .working ? .working : .idle
                 session.lastEvent = existing.lastEvent
             }
+
+            if isRecentlyActive(sessionID: listedSession.id, now: now) {
+                session.status = .working
+            } else {
+                session.status = .idle
+                lastActivityBySessionID[listedSession.id] = nil
+            }
+
             byID[listedSession.id] = session
         }
 
         sessions = byID.values.sorted {
             ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
         }
+        expireStaleWorkingSessions(now: now)
 
         ensureSelection()
     }
@@ -216,6 +227,13 @@ final class SessionStore: ObservableObject {
         } else {
             sessions.insert(session, at: 0)
         }
+
+        if session.status == .working {
+            lastActivityBySessionID[session.id] = Date()
+        } else {
+            lastActivityBySessionID[session.id] = nil
+        }
+
         ensureSelection()
     }
 
@@ -237,13 +255,44 @@ final class SessionStore: ObservableObject {
         sessions[index].status = status
         sessions[index].lastEvent = event
         sessions[index].updatedAt = Date()
+
+        if status == .working {
+            lastActivityBySessionID[sessions[index].id] = Date()
+        } else {
+            lastActivityBySessionID[sessions[index].id] = nil
+        }
     }
 
     private func apply(_ event: SessionUpdateEvent) {
         guard let index = sessions.firstIndex(where: { $0.id == event.id }) else { return }
-        sessions[index].status = .working
+        sessions[index].status = event.status
         sessions[index].lastEvent = event.summary
         sessions[index].updatedAt = event.timestamp
+
+        if event.status == .working {
+            lastActivityBySessionID[event.id] = event.timestamp
+        } else {
+            lastActivityBySessionID[event.id] = nil
+        }
+    }
+
+    private func isRecentlyActive(sessionID: String, now: Date) -> Bool {
+        guard let lastActivity = lastActivityBySessionID[sessionID] else {
+            return false
+        }
+
+        return now.timeIntervalSince(lastActivity) < workingStatusTimeout
+    }
+
+    private func expireStaleWorkingSessions(now: Date) {
+        for index in sessions.indices where sessions[index].status == .working {
+            guard !isRecentlyActive(sessionID: sessions[index].id, now: now) else {
+                continue
+            }
+
+            sessions[index].status = .idle
+            lastActivityBySessionID[sessions[index].id] = nil
+        }
     }
 }
 

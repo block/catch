@@ -70,6 +70,7 @@ struct CodexSession: Identifiable, Equatable {
 struct SessionUpdateEvent: Equatable {
     let provider: AgentProvider
     let sessionID: String
+    let status: SessionStatus
     let summary: String
     let timestamp: Date
 
