@@ -7,9 +7,16 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            ComposerView(prompt: $store.prompt, isFocused: $promptFocused) {
-                Task { await store.submitPrompt() }
-            }
+            ComposerView(
+                prompt: $store.prompt,
+                isFocused: $promptFocused,
+                onMove: { direction in
+                    store.moveSelection(direction: direction)
+                },
+                onSubmit: {
+                    Task { await store.submitPrompt() }
+                }
+            )
 
             Divider()
 
@@ -24,6 +31,13 @@ struct ContentView: View {
         .padding(1)
         .onReceive(NotificationCenter.default.publisher(for: .focusPromptField)) { _ in
             promptFocused = true
+        }
+        .onChange(of: promptFocused) { _, isFocused in
+            guard !isFocused else { return }
+
+            DispatchQueue.main.async {
+                promptFocused = true
+            }
         }
         .onAppear {
             promptFocused = true

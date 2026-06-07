@@ -5,7 +5,7 @@ import SwiftUI
 final class FloatingWindowController: NSObject {
     private let panelSize = NSSize(width: 560, height: 430)
     private let store: SessionStore
-    private var panel: NSPanel?
+    private var panel: FloatingPanel?
     private var isHidingWindow = false
 
     init(store: SessionStore) {
@@ -37,10 +37,10 @@ final class FloatingWindowController: NSObject {
         panel?.orderOut(nil)
     }
 
-    private func makePanel() -> NSPanel {
-        let panel = NSPanel(
+    private func makePanel() -> FloatingPanel {
+        let panel = FloatingPanel(
             contentRect: NSRect(origin: .zero, size: panelSize),
-            styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView],
+            styleMask: [.titled, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )

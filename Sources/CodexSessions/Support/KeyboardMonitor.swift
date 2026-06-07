@@ -35,7 +35,8 @@ struct KeyboardMonitor: NSViewRepresentable {
             guard monitor == nil else { return }
 
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty else {
+                let activeModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+                guard activeModifiers.isEmpty else {
                     return event
                 }
 
