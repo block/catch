@@ -36,7 +36,7 @@ final class GlobalShortcutRegistrar {
                     nil,
                     &hotKeyID
                 )
-                guard status == noErr, hotKeyID.signature == GlobalShortcutRegistrar.signature, hotKeyID.id == 1 else {
+                guard status == noErr, hotKeyID.signature == GlobalShortcutRegistrar.signature else {
                     return noErr
                 }
 
@@ -56,7 +56,7 @@ final class GlobalShortcutRegistrar {
         let hotKeyID = EventHotKeyID(signature: Self.signature, id: 1)
         let hotKeyStatus = RegisterEventHotKey(
             UInt32(kVK_Space),
-            UInt32(controlKey | optionKey),
+            UInt32(optionKey),
             hotKeyID,
             GetApplicationEventTarget(),
             0,
