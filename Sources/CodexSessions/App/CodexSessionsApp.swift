@@ -28,18 +28,26 @@ struct CodexSessionsApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let store = SessionStore()
+    private let runtime = AppRuntime.current
+    let store: SessionStore
     private var globalShortcutRegistrar: GlobalShortcutRegistrar?
-    private lazy var floatingWindowController = FloatingWindowController(store: store)
+    private lazy var floatingWindowController = FloatingWindowController(store: store, isTestBuild: runtime.isTestBuild)
+
+    override init() {
+        store = SessionStore(appSupportDirectoryName: AppRuntime.current.appSupportDirectoryName)
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
-        let registrar = GlobalShortcutRegistrar { [weak self] in
-            self?.showApp()
+        if !runtime.isTestBuild {
+            let registrar = GlobalShortcutRegistrar { [weak self] in
+                self?.showApp()
+            }
+            registrar.register()
+            globalShortcutRegistrar = registrar
         }
-        registrar.register()
-        globalShortcutRegistrar = registrar
 
         Task {
             await store.start()

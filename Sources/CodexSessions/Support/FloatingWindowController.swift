@@ -5,11 +5,13 @@ import SwiftUI
 final class FloatingWindowController: NSObject {
     private let panelSize = NSSize(width: 560, height: 430)
     private let store: SessionStore
+    private let isTestBuild: Bool
     private var panel: FloatingPanel?
     private var isHidingWindow = false
 
-    init(store: SessionStore) {
+    init(store: SessionStore, isTestBuild: Bool = false) {
         self.store = store
+        self.isTestBuild = isTestBuild
         super.init()
     }
 
@@ -49,6 +51,7 @@ final class FloatingWindowController: NSObject {
         panel.hidesOnDeactivate = false
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.title = isTestBuild ? "Codex Sessions Test" : "Codex Sessions"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true
@@ -61,7 +64,7 @@ final class FloatingWindowController: NSObject {
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.delegate = self
         panel.contentView = NSHostingView(
-            rootView: ContentView()
+            rootView: ContentView(isTestBuild: isTestBuild)
                 .environmentObject(store)
                 .frame(width: panelSize.width, height: panelSize.height)
         )
@@ -85,6 +88,10 @@ final class FloatingWindowController: NSObject {
 
 extension FloatingWindowController: NSWindowDelegate {
     func windowDidResignKey(_ notification: Notification) {
+        guard !isTestBuild else {
+            return
+        }
+
         guard let panel,
               notification.object as? NSWindow === panel,
               panel.isVisible

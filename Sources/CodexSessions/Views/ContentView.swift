@@ -4,9 +4,23 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var store: SessionStore
     @FocusState private var promptFocused: Bool
+    let isTestBuild: Bool
+
+    init(isTestBuild: Bool = false) {
+        self.isTestBuild = isTestBuild
+    }
 
     var body: some View {
         VStack(spacing: 0) {
+            if isTestBuild {
+                Text("TEST BUILD")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                    .background(Color.orange)
+            }
+
             ComposerView(
                 prompt: $store.prompt,
                 isFocused: $promptFocused,

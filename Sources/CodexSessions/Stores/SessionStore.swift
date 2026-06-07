@@ -17,17 +17,19 @@ final class SessionStore: ObservableObject {
         let client: ACPClient
     }
 
-    private let workspaceURL: URL = {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        let url = base.appendingPathComponent("CodexSessions/Workspace", isDirectory: true)
-        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
-    }()
+    private let workspaceURL: URL
     private var clients: [ProviderClient] = []
     private var refreshTask: Task<Void, Never>?
     private var lastActivityBySessionID: [String: Date] = [:]
     private let workingStatusTimeout: TimeInterval = 60
+
+    init(appSupportDirectoryName: String = "CodexSessions") {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        let url = base.appendingPathComponent("\(appSupportDirectoryName)/Workspace", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        workspaceURL = url
+    }
 
     var selectedSession: CodexSession? {
         sessions.first { $0.id == selectedSessionID }
