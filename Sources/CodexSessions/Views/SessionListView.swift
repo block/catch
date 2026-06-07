@@ -3,15 +3,58 @@ import SwiftUI
 struct SessionListView: View {
     let sessions: [CodexSession]
     @Binding var selectedSessionID: String?
+    @State private var rowFrames: [String: CGRect] = [:]
+    @State private var viewportFrame: CGRect = .zero
 
     var body: some View {
-        List(selection: $selectedSessionID) {
-            ForEach(sessions) { session in
-                SessionRowView(session: session)
-                    .tag(session.id)
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(sessions) { session in
+                        SessionRowView(
+                            session: session,
+                            isSelected: session.id == selectedSessionID
+                        )
+                        .id(session.id)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedSessionID = session.id
+                            NotificationCenter.default.post(name: .focusPromptField, object: nil)
+                        }
+                        .background {
+                            GeometryReader { geometry in
+                                Color.clear.preference(
+                                    key: RowFramePreferenceKey.self,
+                                    value: [session.id: geometry.frame(in: .named("sessionList"))]
+                                )
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
+            }
+            .background {
+                GeometryReader { geometry in
+                    Color.clear.preference(
+                        key: ViewportFramePreferenceKey.self,
+                        value: geometry.frame(in: .named("sessionList"))
+                    )
+                }
+            }
+            .coordinateSpace(name: "sessionList")
+            .onPreferenceChange(RowFramePreferenceKey.self) { frames in
+                rowFrames = frames
+                scrollSelectionIntoView(proxy: proxy)
+            }
+            .onPreferenceChange(ViewportFramePreferenceKey.self) { frame in
+                viewportFrame = frame
+                scrollSelectionIntoView(proxy: proxy)
+            }
+            .onChange(of: selectedSessionID) { _, _ in
+                scrollSelectionIntoView(proxy: proxy)
             }
         }
-        .listStyle(.sidebar)
         .overlay {
             if sessions.isEmpty {
                 ContentUnavailableView("No Sessions", systemImage: "text.bubble", description: Text("Create a session from the prompt field."))
@@ -19,10 +62,27 @@ struct SessionListView: View {
             }
         }
     }
+
+    private func scrollSelectionIntoView(proxy: ScrollViewProxy) {
+        guard
+            let selectedSessionID,
+            let rowFrame = rowFrames[selectedSessionID],
+            viewportFrame != .zero
+        else {
+            return
+        }
+
+        if rowFrame.minY < viewportFrame.minY {
+            proxy.scrollTo(selectedSessionID, anchor: .top)
+        } else if rowFrame.maxY > viewportFrame.maxY {
+            proxy.scrollTo(selectedSessionID, anchor: .bottom)
+        }
+    }
 }
 
 struct SessionRowView: View {
     let session: CodexSession
+    let isSelected: Bool
 
     var body: some View {
         HStack(spacing: 10) {
@@ -51,6 +111,30 @@ struct SessionRowView: View {
                     .monospacedDigit()
             }
         }
-        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.primary.opacity(0.12))
+            }
+        }
+    }
+}
+
+private struct RowFramePreferenceKey: PreferenceKey {
+    static let defaultValue: [String: CGRect] = [:]
+
+    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
+    }
+}
+
+private struct ViewportFramePreferenceKey: PreferenceKey {
+    static let defaultValue: CGRect = .zero
+
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
     }
 }
