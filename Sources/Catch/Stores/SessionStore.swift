@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class SessionStore: ObservableObject {
+public final class SessionStore: ObservableObject {
     @Published var sessions: [CodexSession] = []
     @Published var selectedSessionID: String? {
         didSet {
@@ -23,7 +23,7 @@ final class SessionStore: ObservableObject {
     private var lastActivityBySessionID: [String: Date] = [:]
     private let workingStatusTimeout: TimeInterval = 60
 
-    init(appSupportDirectoryName: String = "Catch") {
+    public init(appSupportDirectoryName: String = "Catch") {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         let url = base.appendingPathComponent("\(appSupportDirectoryName)/Workspace", isDirectory: true)
@@ -35,7 +35,7 @@ final class SessionStore: ObservableObject {
         sessions.first { $0.id == selectedSessionID }
     }
 
-    func start() async {
+    public func start() async {
         guard clients.isEmpty else { return }
 
         var startupErrors: [String] = []
@@ -45,12 +45,12 @@ final class SessionStore: ObservableObject {
             clients.append(ProviderClient(configuration: configuration, client: client))
 
             do {
-            try client.start { [weak self] event in
-                Task { @MainActor in
-                    self?.apply(event)
+                try client.start { [weak self] event in
+                    Task { @MainActor in
+                        self?.apply(event)
+                    }
                 }
-            }
-            try await client.initialize()
+                try await client.initialize()
             } catch {
                 startupErrors.append("\(configuration.displayName): \(error.localizedDescription)")
                 client.stop()
@@ -70,7 +70,7 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    func refreshSessions() async {
+    public func refreshSessions() async {
         guard !clients.isEmpty else { return }
 
         var listed: [CodexSession] = []

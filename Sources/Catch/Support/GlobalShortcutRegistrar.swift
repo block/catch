@@ -2,18 +2,19 @@ import AppKit
 import Carbon.HIToolbox
 import Foundation
 
-final class GlobalShortcutRegistrar {
+public final class GlobalShortcutRegistrar: @unchecked Sendable {
     private static let signature = fourCharacterCode("Ctch")
 
-    private let onTrigger: () -> Void
+    private let onTrigger: @MainActor () -> Void
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandlerRef: EventHandlerRef?
 
-    init(onTrigger: @escaping () -> Void) {
+    @MainActor
+    public init(onTrigger: @escaping @MainActor () -> Void) {
         self.onTrigger = onTrigger
     }
 
-    func register() {
+    public func register() {
         guard hotKeyRef == nil, eventHandlerRef == nil else { return }
 
         var eventType = EventTypeSpec(
@@ -67,7 +68,7 @@ final class GlobalShortcutRegistrar {
         }
     }
 
-    func unregister() {
+    public func unregister() {
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
         }

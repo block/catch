@@ -1,19 +1,19 @@
 import Foundation
 
-struct AppRuntime {
-    let isTestBuild: Bool
-    let isEmbedded: Bool
+public struct AppRuntime: Sendable {
+    public let isTestBuild: Bool
+    public let isEmbedded: Bool
 
-    static let current = AppRuntime(
+    public static let current = AppRuntime(
         isTestBuild: ProcessInfo.processInfo.environment["CATCH_TEST_BUILD"] == "1",
         isEmbedded: ProcessInfo.processInfo.arguments.contains("--embedded")
     )
 
-    var appName: String {
+    public var appName: String {
         isTestBuild ? "CatchTest" : "Catch"
     }
 
-    var appSupportDirectoryName: String {
+    public var appSupportDirectoryName: String {
         appName
     }
 }

@@ -23,6 +23,42 @@ enum ACPClientError: Error, LocalizedError {
     }
 }
 
+struct JSONObject: @unchecked Sendable, ExpressibleByDictionaryLiteral {
+    private let storage: [String: Any]
+
+    init(_ storage: [String: Any]) {
+        self.storage = storage
+    }
+
+    init(dictionaryLiteral elements: (String, Any)...) {
+        storage = Dictionary(uniqueKeysWithValues: elements)
+    }
+
+    subscript(key: String) -> Any? {
+        storage[key]
+    }
+
+    var rawValue: [String: Any] {
+        Self.rawObject(storage) as? [String: Any] ?? [:]
+    }
+
+    private static func rawObject(_ value: Any) -> Any {
+        if let object = value as? JSONObject {
+            return object.rawValue
+        }
+
+        if let dictionary = value as? [String: Any] {
+            return dictionary.mapValues(rawObject)
+        }
+
+        if let array = value as? [Any] {
+            return array.map(rawObject)
+        }
+
+        return value
+    }
+}
+
 struct ACPClientConfiguration {
     var provider: AgentProvider
     var executablePaths: [String]
@@ -38,8 +74,7 @@ struct ACPClientConfiguration {
     }
 }
 
-final class ACPClient {
-    typealias JSONObject = [String: Any]
+final class ACPClient: @unchecked Sendable {
     typealias UpdateHandler = (SessionUpdateEvent) -> Void
 
     private struct PendingRequest {
@@ -98,9 +133,12 @@ final class ACPClient {
             self?.consumeStderr(handle.availableData)
         }
         process.terminationHandler = { [weak self] process in
-            self?.queue.async {
-                let message = "\(self?.configuration.displayName ?? "ACP") exited with status \(process.terminationStatus)"
-                self?.failAllPending(ACPClientError.rpcError(message))
+            guard let self else { return }
+
+            let terminationStatus = process.terminationStatus
+            queue.async { [self] in
+                let message = "\(configuration.displayName) exited with status \(terminationStatus)"
+                failAllPending(ACPClientError.rpcError(message))
             }
         }
 
@@ -143,11 +181,11 @@ final class ACPClient {
             timeout: 30
         )
 
-        guard let rawSessions = response["sessions"] as? [JSONObject] else {
+        guard let rawSessions = response["sessions"] as? [[String: Any]] else {
             throw ACPClientError.invalidResponse("session/list")
         }
 
-        let sessions = rawSessions.compactMap { decodeSession($0) }
+        let sessions = rawSessions.compactMap { decodeSession(JSONObject($0)) }
         let cursor = response["nextCursor"] as? String
         return (sessions, cursor)
     }
@@ -187,35 +225,28 @@ final class ACPClient {
     }
 
     private func request(method: String, params: JSONObject, timeout: TimeInterval) async throws -> JSONObject {
-        try await withCheckedThrowingContinuation { continuation in
+        let id = nextRequestID()
+        let message: JSONObject = [
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params
+        ]
+        let data = try JSONSerialization.data(withJSONObject: message.rawValue)
+
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<JSONObject, Error>) in
             queue.async {
                 guard self.process.isRunning else {
                     continuation.resume(throwing: ACPClientError.processNotRunning)
                     return
                 }
 
-                let id = self.nextID
-                self.nextID += 1
                 self.pending[id] = PendingRequest(method: method) { result in
                     continuation.resume(with: result)
                 }
 
-                let message: JSONObject = [
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "method": method,
-                    "params": params
-                ]
-
-                do {
-                    let data = try JSONSerialization.data(withJSONObject: message)
-                    self.input.fileHandleForWriting.write(data)
-                    self.input.fileHandleForWriting.write(Data("\n".utf8))
-                } catch {
-                    self.pending[id] = nil
-                    continuation.resume(throwing: error)
-                    return
-                }
+                self.input.fileHandleForWriting.write(data)
+                self.input.fileHandleForWriting.write(Data("\n".utf8))
 
                 self.queue.asyncAfter(deadline: .now() + timeout) {
                     guard let pending = self.pending[id] else { return }
@@ -223,6 +254,14 @@ final class ACPClient {
                     pending.completion(.failure(ACPClientError.timeout(method)))
                 }
             }
+        }
+    }
+
+    private func nextRequestID() -> Int {
+        queue.sync {
+            let id = nextID
+            nextID += 1
+            return id
         }
     }
 
@@ -253,27 +292,29 @@ final class ACPClient {
     private func handleLine(_ data: Data) {
         guard
             let object = try? JSONSerialization.jsonObject(with: data),
-            let message = object as? JSONObject
+            let message = object as? [String: Any]
         else {
             return
         }
 
-        if let method = message["method"] as? String, method == "session/update" {
-            handleUpdate(message)
+        let jsonMessage = JSONObject(message)
+
+        if let method = jsonMessage["method"] as? String, method == "session/update" {
+            handleUpdate(jsonMessage)
             return
         }
 
-        guard let id = (message["id"] as? NSNumber)?.intValue, let pending = pending[id] else {
+        guard let id = (jsonMessage["id"] as? NSNumber)?.intValue, let pending = pending[id] else {
             return
         }
 
         self.pending[id] = nil
 
-        if let error = message["error"] as? JSONObject {
+        if let error = jsonMessage["error"] as? [String: Any] {
             let message = error["message"] as? String ?? String(describing: error)
             pending.completion(.failure(ACPClientError.rpcError(message)))
-        } else if let result = message["result"] as? JSONObject {
-            pending.completion(.success(result))
+        } else if let result = jsonMessage["result"] as? [String: Any] {
+            pending.completion(.success(JSONObject(result)))
         } else {
             pending.completion(.success([:]))
         }
@@ -289,19 +330,21 @@ final class ACPClient {
 
     private func handleUpdate(_ message: JSONObject) {
         guard
-            let params = message["params"] as? JSONObject,
+            let params = message["params"] as? [String: Any],
             let sessionID = params["sessionId"] as? String,
-            let update = params["update"] as? JSONObject
+            let update = params["update"] as? [String: Any]
         else {
             return
         }
+
+        let jsonUpdate = JSONObject(update)
 
         updateHandler?(
             SessionUpdateEvent(
                 provider: configuration.provider,
                 sessionID: sessionID,
-                status: Self.status(for: update),
-                summary: Self.summarize(update),
+                status: Self.status(for: jsonUpdate),
+                summary: Self.summarize(jsonUpdate),
                 timestamp: Date()
             )
         )
@@ -369,7 +412,7 @@ final class ACPClient {
         switch kind {
         case "tool_call":
             let status = update["status"] as? String ?? "in_progress"
-            let rawInput = update["rawInput"] as? JSONObject
+            let rawInput = (update["rawInput"] as? [String: Any]).map(JSONObject.init)
             let command = rawInput?["cmd"] as? String
                 ?? rawInput?["command"] as? String
                 ?? update["title"] as? String
@@ -379,7 +422,7 @@ final class ACPClient {
             let status = update["status"] as? String ?? "updated"
             return "Tool \(status)"
         case "agent_message_chunk":
-            let content = update["content"] as? JSONObject
+            let content = (update["content"] as? [String: Any]).map(JSONObject.init)
             let text = content?["text"] as? String ?? ""
             return text.isEmpty ? "Assistant message" : text
         case "usage_update":

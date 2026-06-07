@@ -2,20 +2,20 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class FloatingWindowController: NSObject {
+public final class FloatingWindowController: NSObject {
     private let panelSize = NSSize(width: 560, height: 430)
     private let store: SessionStore
     private let isTestBuild: Bool
     private var panel: FloatingPanel?
     private var isHidingWindow = false
 
-    init(store: SessionStore, isTestBuild: Bool = false) {
+    public init(store: SessionStore, isTestBuild: Bool = false) {
         self.store = store
         self.isTestBuild = isTestBuild
         super.init()
     }
 
-    func showWindow() {
+    public func showWindow() {
         if panel == nil {
             panel = makePanel()
         }
@@ -93,7 +93,7 @@ final class FloatingWindowController: NSObject {
 }
 
 extension FloatingWindowController: NSWindowDelegate {
-    func windowDidResignKey(_ notification: Notification) {
+    public func windowDidResignKey(_ notification: Notification) {
         guard !isTestBuild else {
             return
         }

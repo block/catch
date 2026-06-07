@@ -1,4 +1,5 @@
 import AppKit
+import CatchKit
 import SwiftUI
 
 @main
@@ -64,9 +65,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showApp() {
         floatingWindowController.showWindow()
     }
-}
-
-extension Notification.Name {
-    static let focusPromptField = Notification.Name("Catch.focusPromptField")
-    static let appWillTerminateProcessClients = Notification.Name("Catch.appWillTerminateProcessClients")
 }

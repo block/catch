@@ -42,10 +42,12 @@ private struct PromptTextField: NSViewRepresentable {
     let onMove: (SelectionDirection) -> Void
     let onSubmit: () -> Void
 
+    @MainActor
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
     }
 
+    @MainActor
     func makeNSView(context: Context) -> NSTextField {
         let textField = NSTextField(string: text)
         textField.isBordered = false
@@ -62,6 +64,7 @@ private struct PromptTextField: NSViewRepresentable {
         return textField
     }
 
+    @MainActor
     func updateNSView(_ nsView: NSTextField, context: Context) {
         context.coordinator.parent = self
 
@@ -80,10 +83,11 @@ private struct PromptTextField: NSViewRepresentable {
         }
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: PromptTextField
         weak var textField: NSTextField?
-        private var focusObserver: NSObjectProtocol?
+        nonisolated(unsafe) private var focusObserver: NSObjectProtocol?
 
         init(parent: PromptTextField) {
             self.parent = parent
@@ -103,8 +107,10 @@ private struct PromptTextField: NSViewRepresentable {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.parent.isFocused.wrappedValue = true
-                self?.focusTextField()
+                Task { @MainActor in
+                    self?.parent.isFocused.wrappedValue = true
+                    self?.focusTextField()
+                }
             }
         }
 
