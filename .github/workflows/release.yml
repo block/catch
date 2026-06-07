@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver version to release, without or with leading v"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    name: Build unsigned macOS release
+    runs-on: macos-15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+          else
+            version="${GITHUB_REF_NAME}"
+          fi
+          version="${version#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid semver version: $version" >&2
+            exit 2
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Package release assets
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: ./script/package_release.sh "${{ steps.version.outputs.version }}"
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="Unsigned macOS release. Standalone users may need to allow the app in macOS Gatekeeper settings."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "Catch $TAG" --notes "$notes"
+            gh release upload "$TAG" --clobber dist/release/*.dmg dist/release/*.tar.gz
+          else
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "Catch $TAG" \
+              --notes "$notes" \
+              dist/release/*.dmg dist/release/*.tar.gz
+          fi
