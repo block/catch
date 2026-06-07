@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @main
-struct CodexSessionsApp: App {
+struct CatchApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        NSLog("Catch launched: embedded=\(runtime.isEmbedded) testBuild=\(runtime.isTestBuild)")
 
         if !runtime.isTestBuild {
             let registrar = GlobalShortcutRegistrar { [weak self] in
@@ -66,6 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 extension Notification.Name {
-    static let focusPromptField = Notification.Name("CodexSessions.focusPromptField")
-    static let appWillTerminateProcessClients = Notification.Name("CodexSessions.appWillTerminateProcessClients")
+    static let focusPromptField = Notification.Name("Catch.focusPromptField")
+    static let appWillTerminateProcessClients = Notification.Name("Catch.appWillTerminateProcessClients")
 }

@@ -23,7 +23,7 @@ final class SessionStore: ObservableObject {
     private var lastActivityBySessionID: [String: Date] = [:]
     private let workingStatusTimeout: TimeInterval = 60
 
-    init(appSupportDirectoryName: String = "CodexSessions") {
+    init(appSupportDirectoryName: String = "Catch") {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         let url = base.appendingPathComponent("\(appSupportDirectoryName)/Workspace", isDirectory: true)

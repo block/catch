@@ -67,7 +67,7 @@ final class ACPClient {
     ) {
         self.configuration = configuration
         self.cwd = cwd
-        self.queue = DispatchQueue(label: "CodexSessions.ACPClient.\(configuration.provider.rawValue)")
+        self.queue = DispatchQueue(label: "Catch.ACPClient.\(configuration.provider.rawValue)")
     }
 
     func start(onUpdate: @escaping UpdateHandler) throws {
@@ -125,7 +125,7 @@ final class ACPClient {
                 "clientCapabilities": [:],
                 "clientInfo": [
                     "name": "codex-sessions-macos",
-                    "title": "Codex Sessions",
+                    "title": "Catch",
                     "version": "1.0.0"
                 ]
             ],

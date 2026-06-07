@@ -13,7 +13,7 @@ The test build is intentionally close to the production floating panel, but uses
 For routine UI interaction, prefer non-invasive process/window-targeted automation over coordinate clicks:
 
 - Use Accessibility or targeted process events where possible.
-- For keyboard navigation, post key events directly to the `CodexSessionsTest` process by PID rather than clicking the real desktop.
+- For keyboard navigation, post key events directly to the `CatchTest` process by PID rather than clicking the real desktop.
 - Capture screenshots by CoreGraphics window ID with `screencapture -l <window-id>` rather than by screen rectangle. This can capture the test panel even when it is behind other windows.
 - Avoid coordinate-based mouse clicks unless the behavior under test is specifically real click/focus/activation behavior.
 
@@ -24,7 +24,7 @@ swift - <<'SWIFT'
 import CoreGraphics
 
 let windows = CGWindowListCopyWindowInfo([.optionAll], CGWindowID(0)) as? [[String: Any]] ?? []
-for window in windows where window[kCGWindowOwnerName as String] as? String == "CodexSessionsTest" {
+for window in windows where window[kCGWindowOwnerName as String] as? String == "CatchTest" {
     if let id = window[kCGWindowNumber as String] as? Int {
         print(id)
         break

@@ -3,17 +3,17 @@
 import PackageDescription
 
 let package = Package(
-    name: "CodexSessions",
+    name: "Catch",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "CodexSessions", targets: ["CodexSessions"])
+        .executable(name: "Catch", targets: ["Catch"])
     ],
     targets: [
         .executableTarget(
-            name: "CodexSessions",
-            path: "Sources/CodexSessions"
+            name: "Catch",
+            path: "Sources/Catch"
         )
     ]
 )

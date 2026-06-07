@@ -2,9 +2,9 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-PRODUCT_NAME="CodexSessions"
-APP_NAME="CodexSessions"
-BUNDLE_ID="local.catch.CodexSessions"
+PRODUCT_NAME="Catch"
+APP_NAME="Catch"
+BUNDLE_ID="xyz.block.catch"
 MIN_SYSTEM_VERSION="14.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -18,12 +18,13 @@ LSUIELEMENT_PLIST='
   <key>LSUIElement</key>
   <true/>'
 TEST_ENV_PLIST=""
+APP_ARGS=()
 
 cd "$ROOT_DIR"
 
 if [[ "$MODE" == "--test" || "$MODE" == "test" ]]; then
-  APP_NAME="CodexSessionsTest"
-  BUNDLE_ID="local.catch.CodexSessionsTest"
+  APP_NAME="CatchTest"
+  BUNDLE_ID="xyz.block.catch.test"
   APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
   APP_CONTENTS="$APP_BUNDLE/Contents"
   APP_MACOS="$APP_CONTENTS/MacOS"
@@ -35,6 +36,10 @@ if [[ "$MODE" == "--test" || "$MODE" == "test" ]]; then
     <key>CATCH_TEST_BUILD</key>
     <string>1</string>
   </dict>'
+fi
+
+if [[ "$MODE" == "--embedded" || "$MODE" == "embedded" ]]; then
+  APP_ARGS=(--embedded)
 fi
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
@@ -71,11 +76,15 @@ $TEST_ENV_PLIST
 PLIST
 
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
+  if ((${#APP_ARGS[@]} > 0)); then
+    /usr/bin/open -n "$APP_BUNDLE" --args "${APP_ARGS[@]}"
+  else
+    /usr/bin/open -n "$APP_BUNDLE"
+  fi
 }
 
 case "$MODE" in
-  run|--test|test)
+  run|--test|test|--embedded|embedded)
     open_app
     ;;
   --debug|debug)
@@ -95,7 +104,7 @@ case "$MODE" in
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [run|--test|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--test|--embedded|--debug|--logs|--telemetry|--verify]" >&2
     exit 2
     ;;
 esac

@@ -57,7 +57,7 @@ final class FloatingWindowController: NSObject {
         panel.hidesOnDeactivate = false
         panel.level = isTestBuild ? .normal : .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        panel.title = isTestBuild ? "Codex Sessions Test" : "Codex Sessions"
+        panel.title = isTestBuild ? "Catch Test" : "Catch"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.isMovableByWindowBackground = true

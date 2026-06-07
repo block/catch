@@ -20,7 +20,7 @@ import SwiftUI
 }
 
 private struct ContentPreviewHost: View {
-    @StateObject private var store = SessionStore(appSupportDirectoryName: "CodexSessionsPreview")
+    @StateObject private var store = SessionStore(appSupportDirectoryName: "CatchPreview")
     let isTestBuild: Bool
 
     var body: some View {
