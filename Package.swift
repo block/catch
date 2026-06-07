@@ -14,6 +14,7 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
+        .library(name: "CatchKit", type: .dynamic, targets: ["CatchKit"]),
         .executable(name: "Catch", targets: ["Catch"])
     ],
     targets: [

@@ -29,6 +29,10 @@ Embedded mode currently uses the same UI behavior as standalone mode, but record
 
 ## Verification And Debugging
 
+### SwiftUI Previews
+
+Open the package in Xcode and select the `CatchKit` scheme before refreshing SwiftUI previews. `CatchKit` is exposed as a dynamic library product so previews can build through a framework scheme; using the `Catch` executable scheme can produce Xcode's `ENABLE_DEBUG_DYLIB` preview error.
+
 ```bash
 ./script/build_and_run.sh --verify
 ```
