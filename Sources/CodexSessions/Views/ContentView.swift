@@ -5,9 +5,11 @@ struct ContentView: View {
     @EnvironmentObject private var store: SessionStore
     @FocusState private var promptFocused: Bool
     let isTestBuild: Bool
+    let keyboardMonitorEnabled: Bool
 
-    init(isTestBuild: Bool = false) {
+    init(isTestBuild: Bool = false, keyboardMonitorEnabled: Bool = true) {
         self.isTestBuild = isTestBuild
+        self.keyboardMonitorEnabled = keyboardMonitorEnabled
     }
 
     var body: some View {
@@ -57,14 +59,16 @@ struct ContentView: View {
             promptFocused = true
         }
         .background {
-            KeyboardMonitor(
-                onMove: { direction in
-                    store.moveSelection(direction: direction)
-                },
-                onEscape: {
-                    NSApp.hide(nil)
-                }
-            )
+            if keyboardMonitorEnabled {
+                KeyboardMonitor(
+                    onMove: { direction in
+                        store.moveSelection(direction: direction)
+                    },
+                    onEscape: {
+                        NSApp.hide(nil)
+                    }
+                )
+            }
         }
     }
 }
