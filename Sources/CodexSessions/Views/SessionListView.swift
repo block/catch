@@ -9,7 +9,7 @@ struct SessionListView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 0) {
+                VStack(spacing: 0) {
                     ForEach(sessions) { session in
                         SessionRowView(
                             session: session,
@@ -45,14 +45,14 @@ struct SessionListView: View {
             .coordinateSpace(name: "sessionList")
             .onPreferenceChange(RowFramePreferenceKey.self) { frames in
                 rowFrames = frames
-                scrollSelectionIntoView(proxy: proxy)
+                scrollSelectionIntoView(proxy: proxy, selectedID: selectedSessionID, previousID: nil)
             }
             .onPreferenceChange(ViewportFramePreferenceKey.self) { frame in
                 viewportFrame = frame
-                scrollSelectionIntoView(proxy: proxy)
+                scrollSelectionIntoView(proxy: proxy, selectedID: selectedSessionID, previousID: nil)
             }
-            .onChange(of: selectedSessionID) { _, _ in
-                scrollSelectionIntoView(proxy: proxy)
+            .onChange(of: selectedSessionID) { oldID, newID in
+                scrollSelectionIntoView(proxy: proxy, selectedID: newID, previousID: oldID)
             }
         }
         .overlay {
@@ -63,19 +63,42 @@ struct SessionListView: View {
         }
     }
 
-    private func scrollSelectionIntoView(proxy: ScrollViewProxy) {
-        guard
-            let selectedSessionID,
-            let rowFrame = rowFrames[selectedSessionID],
-            viewportFrame != .zero
-        else {
+    private func scrollSelectionIntoView(proxy: ScrollViewProxy, selectedID: String?, previousID: String?) {
+        guard let selectedID else {
+            return
+        }
+
+        guard let rowFrame = rowFrames[selectedID], viewportFrame != .zero else {
+            guard let anchor = fallbackAnchor(selectedID: selectedID, previousID: previousID) else { return }
+            scroll(proxy: proxy, to: selectedID, anchor: anchor)
             return
         }
 
         if rowFrame.minY < viewportFrame.minY {
-            proxy.scrollTo(selectedSessionID, anchor: .top)
+            scroll(proxy: proxy, to: selectedID, anchor: .top)
         } else if rowFrame.maxY > viewportFrame.maxY {
-            proxy.scrollTo(selectedSessionID, anchor: .bottom)
+            scroll(proxy: proxy, to: selectedID, anchor: .bottom)
+        }
+    }
+
+    private func fallbackAnchor(selectedID: String, previousID: String?) -> UnitPoint? {
+        guard
+            let previousID,
+            let previousIndex = sessions.firstIndex(where: { $0.id == previousID }),
+            let selectedIndex = sessions.firstIndex(where: { $0.id == selectedID })
+        else {
+            return nil
+        }
+
+        return selectedIndex > previousIndex ? .bottom : .top
+    }
+
+    private func scroll(proxy: ScrollViewProxy, to id: String, anchor: UnitPoint) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+
+        withTransaction(transaction) {
+            proxy.scrollTo(id, anchor: anchor)
         }
     }
 }
