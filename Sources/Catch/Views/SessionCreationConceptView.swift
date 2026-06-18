@@ -8,7 +8,6 @@ public struct SessionCreationConceptView: View {
     @State private var model: ConceptModel = ConceptAgent.goose.models[0]
     @State private var reasoningEffort: ReasoningEffort = .off
     @State private var project: GooseProjectOption = .none
-    @State private var isDictating = false
     @State private var promptSelection = TextSelectionRange()
     @State private var mentionSelectionIndex = 0
     @State private var suppressedMentionKey: String?
@@ -158,7 +157,6 @@ private extension SessionCreationConceptView {
             Spacer(minLength: 8)
 
             connectionStatus
-            dictateButton
             sendButton
         }
     }
@@ -210,7 +208,6 @@ private extension SessionCreationConceptView {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
     }
 
     var modelMenu: some View {
@@ -228,14 +225,12 @@ private extension SessionCreationConceptView {
                 }
             }
         } label: {
-            chipLabel {
+            chipLabel(maxWidth: 190) {
                 Text(model.name)
-                    .foregroundStyle(.secondary)
             }
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
     }
 
     var reasoningMenu: some View {
@@ -253,17 +248,15 @@ private extension SessionCreationConceptView {
                 }
             }
         } label: {
-            chipLabel {
+            chipLabel(maxWidth: 132) {
                 Image(systemName: "brain")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Text(reasoningEffort.shortTitle)
-                    .foregroundStyle(.secondary)
             }
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
     }
 
     var projectMenu: some View {
@@ -281,7 +274,7 @@ private extension SessionCreationConceptView {
                 }
             }
         } label: {
-            chipLabel {
+            chipLabel(maxWidth: 150) {
                 Circle()
                     .fill(project.tint)
                     .frame(width: 8, height: 8)
@@ -290,20 +283,25 @@ private extension SessionCreationConceptView {
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .fixedSize()
     }
 
-    func chipLabel<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    func chipLabel<Content: View>(maxWidth: CGFloat? = nil, @ViewBuilder _ content: () -> Content) -> some View {
         HStack(spacing: 6) {
             content()
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
             Image(systemName: "chevron.down")
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.tertiary)
         }
         .font(.system(size: 14, weight: .medium))
+        .foregroundStyle(.primary)
         .lineLimit(1)
         .padding(.horizontal, 11)
         .frame(height: 34)
+        .frame(maxWidth: maxWidth, alignment: .leading)
+        .clipped()
         .background(Color.primary.opacity(0.1), in: Capsule())
     }
 
@@ -322,21 +320,6 @@ private extension SessionCreationConceptView {
             }
         }
         .animation(.easeInOut(duration: 0.15), value: canSubmit)
-    }
-
-    var dictateButton: some View {
-        Button {
-            isDictating.toggle()
-            isPromptFocused = true
-        } label: {
-            Image(systemName: isDictating ? "waveform" : "mic")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isDictating ? Color.red : Color.primary)
-                .frame(width: 34, height: 34)
-                .background(Color.primary.opacity(0.08), in: Circle())
-        }
-        .buttonStyle(.plain)
-        .help("Dictation is not wired in this branch")
     }
 
     var sendButton: some View {
@@ -590,6 +573,10 @@ private extension SessionCreationConceptView {
         }
 
         if inventoryModels.contains(where: { $0.id == "default" }) {
+            return inventoryModels
+        }
+
+        guard agent.supportsDefaultModel else {
             return inventoryModels
         }
 
@@ -1134,7 +1121,6 @@ private enum ConceptAgent: CaseIterable, Identifiable {
         switch self {
         case .goose:
             [
-                ConceptModel("Default", modelID: nil),
                 ConceptModel("GPT-5.5", modelID: "goose-gpt-5-5"),
                 ConceptModel("Claude Sonnet 4.6", modelID: "goose-claude-4-6-sonnet"),
                 ConceptModel("Claude Opus 4.8", modelID: "goose-claude-opus-4-8")
@@ -1150,20 +1136,21 @@ private enum ConceptAgent: CaseIterable, Identifiable {
             [
                 ConceptModel("GPT-5.5", modelID: "gpt-5.5"),
                 ConceptModel("GPT-5.5 High", modelID: "gpt-5.5-high"),
-                ConceptModel("GPT-5.3 Codex", modelID: "gpt-5.3-codex"),
-                ConceptModel("Default", modelID: nil)
+                ConceptModel("GPT-5.3 Codex", modelID: "gpt-5.3-codex")
             ]
         case .amp:
             [
-                ConceptModel("Smart", modelID: "smart"),
-                ConceptModel("Default", modelID: nil)
+                ConceptModel("Smart", modelID: "smart")
             ]
         case .cursor:
             [
-                ConceptModel("Auto", modelID: "auto"),
-                ConceptModel("Default", modelID: nil)
+                ConceptModel("Auto", modelID: "auto")
             ]
         }
+    }
+
+    var supportsDefaultModel: Bool {
+        self == .claudeCode
     }
 }
 
@@ -1213,7 +1200,7 @@ private enum ReasoningEffort: String, CaseIterable, Identifiable {
 
     var shortTitle: String {
         switch self {
-        case .off: "No reasoning"
+        case .off: "Off"
         case .low: "Low"
         case .medium: "Medium"
         case .high: "High"
