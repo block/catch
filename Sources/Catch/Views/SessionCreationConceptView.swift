@@ -11,7 +11,9 @@ public struct SessionCreationConceptView: View {
     @State private var promptSelection = TextSelectionRange()
     @State private var mentionSelectionIndex = 0
     @State private var suppressedMentionKey: String?
+    @State private var isConfigurationPopoverPresented = false
     @State private var gooseAgentCompletions: [MentionCompletion] = GooseBundledAgent.loadMentionCompletions()
+    @State private var skillMentionCompletions: [MentionCompletion] = MentionCompletion.defaultSkillCompletions
     @State private var gooseProjects: [GooseProjectOption] = [.none]
     @State private var fileMentionCompletions: [MentionCompletion] = []
     @State private var modelInventory: [String: [ConceptModel]] = [:]
@@ -149,9 +151,7 @@ private extension SessionCreationConceptView {
     var controlBar: some View {
         HStack(spacing: 8) {
             addMenu
-            agentMenu
-            modelMenu
-            reasoningMenu
+            configurationMenu
             projectMenu
 
             Spacer(minLength: 8)
@@ -183,80 +183,130 @@ private extension SessionCreationConceptView {
         .help("Additional inputs are not wired yet")
     }
 
-    var agentMenu: some View {
-        Menu {
-            ForEach(ConceptAgent.allCases) { option in
-                Button {
-                    agent = option
-                    model = models(for: option)[0]
-                    isPromptFocused = true
-                } label: {
-                    if agent == option {
-                        Label(option.title, systemImage: "checkmark")
-                    } else {
-                        Text(option.title)
-                    }
-                }
-            }
+    var configurationMenu: some View {
+        Button {
+            isConfigurationPopoverPresented.toggle()
+            isPromptFocused = true
         } label: {
             chipLabel {
                 Image(systemName: agent.symbolName)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(agent.tint)
-                Text(agent.title)
-            }
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-    }
-
-    var modelMenu: some View {
-        Menu {
-            ForEach(models(for: agent)) { option in
-                Button {
-                    model = option
-                    isPromptFocused = true
-                } label: {
-                    if model == option {
-                        Label(option.name, systemImage: "checkmark")
-                    } else {
-                        Text(option.name)
-                    }
-                }
-            }
-        } label: {
-            chipLabel(maxWidth: 190) {
                 Text(model.name)
-            }
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-    }
-
-    var reasoningMenu: some View {
-        Menu {
-            ForEach(ReasoningEffort.allCases) { option in
-                Button {
-                    reasoningEffort = option
-                    isPromptFocused = true
-                } label: {
-                    if reasoningEffort == option {
-                        Label(option.title, systemImage: "checkmark")
-                    } else {
-                        Text(option.title)
-                    }
-                }
-            }
-        } label: {
-            chipLabel(maxWidth: 132) {
-                Image(systemName: "brain")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
                 Text(reasoningEffort.shortTitle)
             }
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
+        .popover(isPresented: $isConfigurationPopoverPresented, arrowEdge: .bottom) {
+            configurationPopover
+        }
+    }
+
+    var configurationPopover: some View {
+        HStack(alignment: .top, spacing: 32) {
+            configurationColumn(title: "Agent") {
+                ForEach(ConceptAgent.allCases) { option in
+                    configurationOptionButton(
+                        title: option.title,
+                        symbolName: option.symbolName,
+                        tint: option.tint,
+                        isSelected: agent == option
+                    ) {
+                        agent = option
+                        model = models(for: option)[0]
+                        isPromptFocused = true
+                    }
+                }
+            }
+
+            configurationColumn(title: "Model") {
+                ForEach(models(for: agent)) { option in
+                    configurationOptionButton(
+                        title: option.name,
+                        symbolName: "square.stack.3d.up",
+                        tint: .red,
+                        isSelected: model == option
+                    ) {
+                        model = option
+                        isPromptFocused = true
+                    }
+                }
+            }
+
+            configurationColumn(title: "Reasoning effort") {
+                ForEach(ReasoningEffort.allCases) { option in
+                    configurationOptionButton(
+                        title: option.title,
+                        symbolName: nil,
+                        tint: .secondary,
+                        isSelected: reasoningEffort == option
+                    ) {
+                        reasoningEffort = option
+                        isPromptFocused = true
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(width: 690, height: 340, alignment: .topLeading)
+    }
+
+    func configurationColumn<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 8)
+
+            VStack(spacing: 4) {
+                content()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    func configurationOptionButton(
+        title: String,
+        symbolName: String?,
+        tint: Color,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 9) {
+                if let symbolName {
+                    Image(systemName: symbolName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(tint)
+                        .frame(width: 18)
+                }
+
+                Text(title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Spacer(minLength: 8)
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.primary.opacity(0.08))
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     var projectMenu: some View {
@@ -430,17 +480,21 @@ private extension SessionCreationConceptView {
 
     func completions(matching query: String) -> [MentionCompletion] {
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let completions = gooseAgentCompletions
-            + MentionCompletion.skillCompletions
-            + fileMentionCompletions
+        let groupedCompletions = [
+            gooseAgentCompletions,
+            skillMentionCompletions,
+            fileMentionCompletions
+        ]
+        let completions = groupedCompletions.flatMap { $0 }
 
-        let filtered: [MentionCompletion]
         if normalizedQuery.isEmpty {
-            filtered = completions
-        } else {
-            filtered = completions.filter { completion in
-                completion.searchText.lowercased().contains(normalizedQuery)
+            return groupedCompletions.flatMap { group in
+                group.sorted().prefix(8)
             }
+        }
+
+        let filtered = completions.filter { completion in
+            completion.searchText.lowercased().contains(normalizedQuery)
         }
 
         return Array(filtered.sorted().prefix(24))
@@ -534,6 +588,16 @@ private extension SessionCreationConceptView {
             gooseAgentCompletions = GooseBundledAgent.loadMentionCompletions()
         } else {
             gooseAgentCompletions = acpAgents
+        }
+
+        let acpSkills = metadata.sources
+            .filter { $0.type == "skill" }
+            .map(MentionCompletion.init(skillSource:))
+            .sorted()
+        if acpSkills.isEmpty {
+            skillMentionCompletions = MentionCompletion.defaultSkillCompletions
+        } else {
+            skillMentionCompletions = acpSkills
         }
 
         var grouped: [String: [ConceptModel]] = [:]
@@ -714,7 +778,19 @@ private struct MentionCompletion: Identifiable, Comparable, Sendable {
         )
     }
 
-    static let skillCompletions: [MentionCompletion] = [
+    init(skillSource: GooseSourceEntry) {
+        let displayTitle = skillSource.title ?? skillSource.name
+        self.init(
+            id: "skill:\(skillSource.name)",
+            kind: .skill,
+            title: displayTitle,
+            subtitle: skillSource.description.isEmpty ? "Goose skill" : skillSource.description,
+            insertText: "@skill:\(skillSource.name) ",
+            searchText: "\(displayTitle) \(skillSource.name) \(skillSource.description)"
+        )
+    }
+
+    static let defaultSkillCompletions: [MentionCompletion] = [
         ("Plan", "Break work into concrete steps", "plan"),
         ("Explore", "Research a codebase or project area", "explore"),
         ("Code Review", "Review changes for bugs and risks", "code-review"),
