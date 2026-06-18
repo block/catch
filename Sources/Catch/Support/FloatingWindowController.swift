@@ -7,7 +7,6 @@ public final class FloatingWindowController: NSObject {
     private let store: SessionStore
     private let isTestBuild: Bool
     private var panel: FloatingPanel?
-    private var isHidingWindow = false
 
     public init(store: SessionStore, isTestBuild: Bool = false) {
         self.store = store
@@ -37,11 +36,6 @@ public final class FloatingWindowController: NSObject {
     }
 
     func hideWindow() {
-        guard isHidingWindow == false else { return }
-
-        isHidingWindow = true
-        defer { isHidingWindow = false }
-
         panel?.orderOut(nil)
     }
 
@@ -94,17 +88,6 @@ public final class FloatingWindowController: NSObject {
 
 extension FloatingWindowController: NSWindowDelegate {
     public func windowDidResignKey(_ notification: Notification) {
-        guard !isTestBuild else {
-            return
-        }
-
-        guard let panel,
-              notification.object as? NSWindow === panel,
-              panel.isVisible
-        else {
-            return
-        }
-
-        hideWindow()
+        NotificationCenter.default.post(name: .focusPromptField, object: nil)
     }
 }

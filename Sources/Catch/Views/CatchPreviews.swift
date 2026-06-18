@@ -8,6 +8,14 @@ import SwiftUI
     ContentPreviewHost(isTestBuild: true)
 }
 
+#Preview("Session Creation Mock") {
+    SessionCreationMockView()
+}
+
+#Preview("Session Creation — Concept") {
+    ContentPreviewHost(isTestBuild: false)
+}
+
 #Preview("Session List Empty") {
     @Previewable @State var selectedSessionID: String?
 
