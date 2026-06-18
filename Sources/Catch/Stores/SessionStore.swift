@@ -70,6 +70,10 @@ public final class SessionStore: ObservableObject {
         }
     }
 
+    func loadSessionCreationMetadata() async throws -> GooseSessionCreationMetadata {
+        try await gooseClient.loadSessionCreationMetadata()
+    }
+
     func submitPrompt(configuration: GooseSessionConfiguration) async {
         let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedPrompt.isEmpty, isConnected else { return }

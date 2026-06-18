@@ -27,6 +27,47 @@ struct GooseSessionConfiguration: Equatable {
     var providerID: String?
     var modelID: String?
     var cwd: String
+    var projectID: String?
+    var reasoningEffort: String?
+}
+
+struct GooseSessionCreationMetadata: Sendable {
+    var sources: [GooseSourceEntry]
+    var providers: [GooseProviderEntry]
+    var defaults: GooseProviderDefaults?
+}
+
+struct GooseSourceEntry: Identifiable, Equatable, Sendable {
+    var id: String { "\(type):\(name)" }
+
+    let type: String
+    let name: String
+    let description: String
+    let path: String?
+    let title: String?
+    let color: String?
+}
+
+struct GooseProviderDefaults: Equatable, Sendable {
+    let providerID: String
+    let modelID: String
+}
+
+struct GooseProviderEntry: Identifiable, Equatable, Sendable {
+    var id: String { providerID }
+
+    let providerID: String
+    let providerName: String
+    let defaultModelID: String?
+    let configured: Bool
+    let models: [GooseProviderModel]
+}
+
+struct GooseProviderModel: Identifiable, Equatable, Sendable {
+    let id: String
+    let name: String
+    let recommended: Bool
+    let reasoning: Bool
 }
 
 final class GooseServeClient: NSObject, @unchecked Sendable {
@@ -131,7 +172,27 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
             try await setConfigOption(sessionID: sessionID, configID: "model", value: modelID)
         }
 
+        if let reasoningEffort = configuration.reasoningEffort {
+            try? await setConfigOption(sessionID: sessionID, configID: "thinking_effort", value: reasoningEffort)
+        }
+
+        if let projectID = configuration.projectID {
+            try await updateProject(sessionID: sessionID, projectID: projectID)
+        }
+
         return sessionID
+    }
+
+    func loadSessionCreationMetadata() async throws -> GooseSessionCreationMetadata {
+        async let sources = listSources()
+        async let providers = listProviders()
+        async let defaults = readDefaults()
+
+        return try await GooseSessionCreationMetadata(
+            sources: sources,
+            providers: providers,
+            defaults: defaults
+        )
     }
 
     func sendPrompt(sessionID: String, prompt: String) async throws {
@@ -161,6 +222,61 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
             ],
             timeout: 30
         )
+    }
+
+    private func updateProject(sessionID: String, projectID: String) async throws {
+        _ = try await request(
+            method: "_goose/unstable/session/project/update",
+            params: [
+                "sessionId": sessionID,
+                "projectId": projectID
+            ],
+            timeout: 30
+        )
+    }
+
+    private func listSources() async throws -> [GooseSourceEntry] {
+        let response = try await request(
+            method: "_goose/unstable/sources/list",
+            params: [:],
+            timeout: 30
+        )
+
+        guard let rawSources = response["sources"] as? [[String: Any]] else {
+            throw GooseServeClientError.invalidResponse("_goose/unstable/sources/list")
+        }
+
+        return rawSources.compactMap(Self.decodeSource)
+    }
+
+    private func listProviders() async throws -> [GooseProviderEntry] {
+        let response = try await request(
+            method: "_goose/unstable/providers/list",
+            params: [:],
+            timeout: 30
+        )
+
+        guard let rawEntries = response["entries"] as? [[String: Any]] else {
+            throw GooseServeClientError.invalidResponse("_goose/unstable/providers/list")
+        }
+
+        return rawEntries.compactMap(Self.decodeProvider)
+    }
+
+    private func readDefaults() async throws -> GooseProviderDefaults? {
+        let response = try await request(
+            method: "_goose/unstable/defaults/read",
+            params: [:],
+            timeout: 30
+        )
+
+        guard let providerID = response["providerId"] as? String,
+              let modelID = response["modelId"] as? String
+        else {
+            return nil
+        }
+
+        return GooseProviderDefaults(providerID: providerID, modelID: modelID)
     }
 
     private func startServer() throws {
@@ -370,6 +486,65 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
                 timestamp: Date()
             )
         )
+    }
+
+    private static func decodeSource(_ object: [String: Any]) -> GooseSourceEntry? {
+        guard let type = object["type"] as? String,
+              let name = object["name"] as? String
+        else {
+            return nil
+        }
+
+        let properties = object["properties"] as? [String: Any]
+        return GooseSourceEntry(
+            type: type,
+            name: name,
+            description: object["description"] as? String ?? "",
+            path: object["path"] as? String,
+            title: properties?["title"] as? String,
+            color: properties?["color"] as? String
+        )
+    }
+
+    private static func decodeProvider(_ object: [String: Any]) -> GooseProviderEntry? {
+        guard let providerID = object["providerId"] as? String else {
+            return nil
+        }
+
+        let rawModels = object["models"] as? [[String: Any]] ?? []
+        return GooseProviderEntry(
+            providerID: providerID,
+            providerName: object["providerName"] as? String ?? providerID,
+            defaultModelID: object["defaultModel"] as? String,
+            configured: boolValue(object["configured"]),
+            models: rawModels.compactMap(decodeProviderModel)
+        )
+    }
+
+    private static func decodeProviderModel(_ object: [String: Any]) -> GooseProviderModel? {
+        guard let id = object["id"] as? String else {
+            return nil
+        }
+
+        return GooseProviderModel(
+            id: id,
+            name: object["name"] as? String ?? id,
+            recommended: boolValue(object["recommended"]),
+            reasoning: boolValue(object["reasoning"])
+        )
+    }
+
+    private static func boolValue(_ value: Any?) -> Bool {
+        switch value {
+        case let value as Bool:
+            value
+        case let value as NSNumber:
+            value.boolValue
+        case let value as String:
+            ["1", "true", "yes"].contains(value.lowercased())
+        default:
+            false
+        }
     }
 
     private func decodeSession(_ object: JSONObject) -> CodexSession? {

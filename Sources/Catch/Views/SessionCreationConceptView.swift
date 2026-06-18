@@ -6,11 +6,14 @@ public struct SessionCreationConceptView: View {
     @EnvironmentObject private var store: SessionStore
     @State private var agent: ConceptAgent = .goose
     @State private var model: ConceptModel = ConceptAgent.goose.models[0]
-    @State private var project: ConceptProject = .catchProject
+    @State private var reasoningEffort: ReasoningEffort = .off
+    @State private var project: GooseProjectOption = .none
     @State private var isDictating = false
     @State private var promptSelection = TextSelectionRange()
     @State private var mentionSelectionIndex = 0
     @State private var suppressedMentionKey: String?
+    @State private var gooseAgentCompletions: [MentionCompletion] = GooseBundledAgent.loadMentionCompletions()
+    @State private var gooseProjects: [GooseProjectOption] = [.none]
     @State private var fileMentionCompletions: [MentionCompletion] = []
     @State private var modelInventory: [String: [ConceptModel]] = [:]
     @FocusState private var isPromptFocused: Bool
@@ -63,10 +66,17 @@ public struct SessionCreationConceptView: View {
         .onAppear {
             isPromptFocused = true
             loadFileMentions()
-            loadModelInventory()
+            if store.isConnected {
+                loadCreationMetadata()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .focusPromptField)) { _ in
             isPromptFocused = true
+        }
+        .onChange(of: store.isConnected) { _, isConnected in
+            if isConnected {
+                loadCreationMetadata()
+            }
         }
         .onChange(of: activeMentionKey) { _, _ in
             mentionSelectionIndex = 0
@@ -142,6 +152,7 @@ private extension SessionCreationConceptView {
             addMenu
             agentMenu
             modelMenu
+            reasoningMenu
             projectMenu
 
             Spacer(minLength: 8)
@@ -227,9 +238,37 @@ private extension SessionCreationConceptView {
         .fixedSize()
     }
 
+    var reasoningMenu: some View {
+        Menu {
+            ForEach(ReasoningEffort.allCases) { option in
+                Button {
+                    reasoningEffort = option
+                    isPromptFocused = true
+                } label: {
+                    if reasoningEffort == option {
+                        Label(option.title, systemImage: "checkmark")
+                    } else {
+                        Text(option.title)
+                    }
+                }
+            }
+        } label: {
+            chipLabel {
+                Image(systemName: "brain")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(reasoningEffort.shortTitle)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+    }
+
     var projectMenu: some View {
         Menu {
-            ForEach(ConceptProject.allCases) { option in
+            ForEach(gooseProjects) { option in
                 Button {
                     project = option
                     isPromptFocused = true
@@ -321,7 +360,9 @@ private extension SessionCreationConceptView {
         let configuration = GooseSessionConfiguration(
             providerID: agent.providerID,
             modelID: model.modelID,
-            cwd: project.cwd
+            cwd: project.cwd,
+            projectID: project.projectID,
+            reasoningEffort: reasoningEffort.acpValue
         )
 
         Task {
@@ -406,7 +447,7 @@ private extension SessionCreationConceptView {
 
     func completions(matching query: String) -> [MentionCompletion] {
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let completions = MentionCompletion.agentCompletions(from: ConceptAgent.allCases)
+        let completions = gooseAgentCompletions
             + MentionCompletion.skillCompletions
             + fileMentionCompletions
 
@@ -478,23 +519,64 @@ private extension SessionCreationConceptView {
         }
     }
 
-    func loadModelInventory() {
-        Task.detached(priority: .utility) {
-            let records = ModelInventoryRecord.loadFromGooseSessionDatabase()
-            await MainActor.run {
-                var grouped: [String: [ConceptModel]] = [:]
-                for record in records {
-                    grouped[record.providerID, default: []].append(
-                        ConceptModel(record.name, modelID: record.modelID)
-                    )
-                }
-
-                modelInventory = grouped
+    func loadCreationMetadata() {
+        Task {
+            do {
+                let metadata = try await store.loadSessionCreationMetadata()
+                apply(metadata)
+            } catch {
                 if !models(for: agent).contains(model) {
                     model = models(for: agent)[0]
                 }
             }
         }
+    }
+
+    func apply(_ metadata: GooseSessionCreationMetadata) {
+        let projects = metadata.sources
+            .filter { $0.type == "project" }
+            .map(GooseProjectOption.init(source:))
+            .sorted()
+
+        gooseProjects = [.none] + projects
+        if !gooseProjects.contains(project) {
+            project = .none
+        }
+
+        let acpAgents = metadata.sources
+            .filter { $0.type == "agent" }
+            .map(MentionCompletion.init(agentSource:))
+            .sorted()
+        if acpAgents.isEmpty {
+            gooseAgentCompletions = GooseBundledAgent.loadMentionCompletions()
+        } else {
+            gooseAgentCompletions = acpAgents
+        }
+
+        var grouped: [String: [ConceptModel]] = [:]
+        for provider in metadata.providers {
+            let models = selectedModels(from: provider)
+            if !models.isEmpty {
+                grouped[provider.providerID] = models
+            }
+        }
+        modelInventory = grouped
+
+        if agent == .goose, let defaults = metadata.defaults, let defaultModel = grouped[defaults.providerID]?.first(where: { $0.modelID == defaults.modelID }) {
+            model = defaultModel
+        } else if !models(for: agent).contains(model) {
+            model = models(for: agent)[0]
+        }
+
+        loadFileMentions()
+    }
+
+    func selectedModels(from provider: GooseProviderEntry) -> [ConceptModel] {
+        let recommended = provider.models.filter(\.recommended)
+        let sourceModels = recommended.isEmpty ? provider.models : recommended
+        return sourceModels.map { model in
+            ConceptModel(model.name, modelID: model.id)
+        }.deduplicatedByID()
     }
 
     func models(for agent: ConceptAgent) -> [ConceptModel] {
@@ -507,7 +589,11 @@ private extension SessionCreationConceptView {
             return agent.models
         }
 
-        return [ConceptModel("Default", modelID: nil)] + inventoryModels
+        if inventoryModels.contains(where: { $0.id == "default" }) {
+            return inventoryModels
+        }
+
+        return ([ConceptModel("Default", modelID: nil)] + inventoryModels).deduplicatedByID()
     }
 }
 
@@ -613,6 +699,15 @@ private struct MentionCompletion: Identifiable, Comparable, Sendable {
     let insertText: String
     let searchText: String
 
+    init(id: String, kind: MentionCompletionKind, title: String, subtitle: String, insertText: String, searchText: String) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.subtitle = subtitle
+        self.insertText = insertText
+        self.searchText = searchText
+    }
+
     static func < (lhs: MentionCompletion, rhs: MentionCompletion) -> Bool {
         if lhs.kind != rhs.kind {
             return lhs.kind < rhs.kind
@@ -620,17 +715,16 @@ private struct MentionCompletion: Identifiable, Comparable, Sendable {
         return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
     }
 
-    static func agentCompletions(from agents: [ConceptAgent]) -> [MentionCompletion] {
-        agents.map { agent in
-            MentionCompletion(
-                id: "agent:\(agent.title)",
-                kind: .agent,
-                title: agent.title,
-                subtitle: "Agent",
-                insertText: "@agent:\(agent.title) ",
-                searchText: "\(agent.title) agent \(agent.providerID ?? "goose")"
-            )
-        }
+    init(agentSource: GooseSourceEntry) {
+        let displayTitle = agentSource.title ?? agentSource.name
+        self.init(
+            id: "agent:\(agentSource.name)",
+            kind: .agent,
+            title: displayTitle,
+            subtitle: agentSource.description.isEmpty ? "Goose agent" : agentSource.description,
+            insertText: "@\(agentSource.name) ",
+            searchText: "\(displayTitle) \(agentSource.name) \(agentSource.description)"
+        )
     }
 
     static let skillCompletions: [MentionCompletion] = [
@@ -752,65 +846,6 @@ private struct MentionCompletionRow: View {
             }
         }
         .contentShape(Rectangle())
-    }
-}
-
-private struct ModelInventoryRecord: Sendable {
-    let providerID: String
-    let modelID: String
-    let name: String
-
-    static func loadFromGooseSessionDatabase() -> [ModelInventoryRecord] {
-        let dbPath = NSHomeDirectory() + "/.local/share/goose/sessions/sessions.db"
-        guard FileManager.default.fileExists(atPath: dbPath) else { return [] }
-
-        let query = """
-        WITH latest AS (
-            SELECT provider_id, MAX(COALESCE(last_updated_at, updated_at, created_at)) AS updated_at
-            FROM provider_inventory_entries
-            GROUP BY provider_id
-        )
-        SELECT e.provider_id, m.model_id, m.name
-        FROM provider_inventory_entries e
-        JOIN latest l
-            ON l.provider_id = e.provider_id
-            AND l.updated_at = COALESCE(e.last_updated_at, e.updated_at, e.created_at)
-        JOIN provider_inventory_models m
-            ON m.inventory_key = e.inventory_key
-        ORDER BY e.provider_id, m.recommended DESC, m.ordinal ASC;
-        """
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
-        process.arguments = ["-tabs", dbPath, query]
-
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            return []
-        }
-
-        guard process.terminationStatus == 0 else { return [] }
-
-        let data = output.fileHandleForReading.readDataToEndOfFile()
-        guard let rawOutput = String(data: data, encoding: .utf8) else { return [] }
-
-        return rawOutput
-            .split(separator: "\n")
-            .compactMap { line in
-                let columns = line.split(separator: "\t", omittingEmptySubsequences: false)
-                guard columns.count >= 3 else { return nil }
-                return ModelInventoryRecord(
-                    providerID: String(columns[0]),
-                    modelID: String(columns[1]),
-                    name: String(columns[2])
-                )
-            }
     }
 }
 
@@ -1063,7 +1098,7 @@ private enum ConceptAgent: CaseIterable, Identifiable {
     var modelProviderIDs: [String] {
         switch self {
         case .goose:
-            ["databricks_v2", "databricks"]
+            ["databricks_v2"]
         case .claudeCode:
             ["claude-acp"]
         case .codex:
@@ -1100,9 +1135,9 @@ private enum ConceptAgent: CaseIterable, Identifiable {
         case .goose:
             [
                 ConceptModel("Default", modelID: nil),
-                ConceptModel("GPT-5.5", modelID: "compass-openai-gpt-5-5"),
+                ConceptModel("GPT-5.5", modelID: "goose-gpt-5-5"),
                 ConceptModel("Claude Sonnet 4.6", modelID: "goose-claude-4-6-sonnet"),
-                ConceptModel("Claude Opus 4.6", modelID: "goose-claude-4-6-opus")
+                ConceptModel("Claude Opus 4.8", modelID: "goose-claude-opus-4-8")
             ]
         case .claudeCode:
             [
@@ -1138,7 +1173,7 @@ private struct ConceptModel: Identifiable, Equatable, Sendable {
     let modelID: String?
 
     init(_ name: String, modelID: String?) {
-        id = modelID ?? "default"
+        id = modelID == "default" ? "default" : (modelID ?? "default")
         self.name = name
         self.modelID = modelID
     }
@@ -1157,38 +1192,164 @@ private extension Array where Element == ConceptModel {
     }
 }
 
-private enum ConceptProject: CaseIterable, Identifiable {
-    case none
-    case catchProject
-    case nexusCompanion
-    case artifacts
+private enum ReasoningEffort: String, CaseIterable, Identifiable {
+    case off
+    case low
+    case medium
+    case high
+    case max
 
     var id: Self { self }
 
     var title: String {
         switch self {
-        case .none: "No project"
-        case .catchProject: "catch"
-        case .nexusCompanion: "nexus-companion"
-        case .artifacts: "goose artifacts"
+        case .off: "Off"
+        case .low: "Low"
+        case .medium: "Medium"
+        case .high: "High"
+        case .max: "Max"
         }
     }
 
-    var cwd: String {
+    var shortTitle: String {
         switch self {
-        case .none: NSHomeDirectory()
-        case .catchProject: "/Users/tomb/Development/catch"
-        case .nexusCompanion: "/Users/tomb/Development/nexus-companion"
-        case .artifacts: "/Users/tomb/goose artifacts"
+        case .off: "No reasoning"
+        case .low: "Low"
+        case .medium: "Medium"
+        case .high: "High"
+        case .max: "Max"
         }
     }
 
-    var tint: Color {
-        switch self {
-        case .none: .secondary.opacity(0.4)
-        case .catchProject: .blue
-        case .nexusCompanion: .green
-        case .artifacts: .purple
+    var acpValue: String? {
+        rawValue
+    }
+}
+
+private struct GooseProjectOption: Identifiable, Equatable, Comparable, Sendable {
+    let id: String
+    let title: String
+    let cwd: String
+    let projectID: String?
+    let tint: Color
+
+    static let none = GooseProjectOption(
+        id: "none",
+        title: "No project",
+        cwd: NSHomeDirectory(),
+        projectID: nil,
+        tint: .secondary.opacity(0.4)
+    )
+
+    init(id: String, title: String, cwd: String, projectID: String?, tint: Color) {
+        self.id = id
+        self.title = title
+        self.cwd = cwd
+        self.projectID = projectID
+        self.tint = tint
+    }
+
+    init(source: GooseSourceEntry) {
+        let displayTitle = source.title ?? source.name
+        self.init(
+            id: source.name,
+            title: displayTitle,
+            cwd: Self.defaultCWD(for: source),
+            projectID: source.name,
+            tint: source.color.flatMap(Color.init(hex:)) ?? .purple
+        )
+    }
+
+    static func < (lhs: GooseProjectOption, rhs: GooseProjectOption) -> Bool {
+        lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+    }
+
+    private static func defaultCWD(for source: GooseSourceEntry) -> String {
+        let artifacts = NSHomeDirectory() + "/goose artifacts"
+        if FileManager.default.fileExists(atPath: artifacts) {
+            return artifacts
         }
+
+        return NSHomeDirectory()
+    }
+}
+
+private struct GooseBundledAgent: Sendable {
+    let name: String
+    let description: String
+
+    static func loadMentionCompletions() -> [MentionCompletion] {
+        load().map { agent in
+            MentionCompletion(
+                id: "agent:\(agent.name)",
+                kind: .agent,
+                title: agent.name,
+                subtitle: agent.description.isEmpty ? "Goose agent" : agent.description,
+                insertText: "@\(agent.name) ",
+                searchText: "\(agent.name) \(agent.description)"
+            )
+        }.sorted()
+    }
+
+    private static func load() -> [GooseBundledAgent] {
+        let agentsDirectory = URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(".agents/agents", isDirectory: true)
+        let manifestURL = agentsDirectory.appendingPathComponent(".goose-internal-bundled-agents.json")
+
+        guard let data = try? Data(contentsOf: manifestURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let fileNames = object["seededFiles"] as? [String]
+        else {
+            return fallbackAgents
+        }
+
+        let agents = fileNames.compactMap { fileName -> GooseBundledAgent? in
+            let url = agentsDirectory.appendingPathComponent(fileName)
+            guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+            return parseAgent(content)
+        }
+
+        return agents.isEmpty ? fallbackAgents : agents
+    }
+
+    private static func parseAgent(_ content: String) -> GooseBundledAgent? {
+        guard content.hasPrefix("---"),
+              let endRange = content.range(of: "\n---", range: content.index(content.startIndex, offsetBy: 3)..<content.endIndex)
+        else {
+            return nil
+        }
+
+        let frontmatter = content[content.index(content.startIndex, offsetBy: 3)..<endRange.lowerBound]
+        var fields: [String: String] = [:]
+        for line in frontmatter.split(separator: "\n") {
+            guard let separator = line.firstIndex(of: ":") else { continue }
+            let key = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
+            let value = line[line.index(after: separator)...]
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
+            fields[key] = value
+        }
+
+        guard let name = fields["name"], !name.isEmpty else { return nil }
+        return GooseBundledAgent(name: name, description: fields["description"] ?? "")
+    }
+
+    private static let fallbackAgents: [GooseBundledAgent] = [
+        GooseBundledAgent(name: "Builderbot", description: "Focused coding partner for thoughtful, efficient implementation."),
+        GooseBundledAgent(name: "block.md", description: "Opinionated guide to Block's intelligence operating model.")
+    ]
+}
+
+private extension Color {
+    init?(hex: String) {
+        let trimmed = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        guard trimmed.count == 6, let value = Int(trimmed, radix: 16) else {
+            return nil
+        }
+
+        let red = Double((value >> 16) & 0xff) / 255
+        let green = Double((value >> 8) & 0xff) / 255
+        let blue = Double(value & 0xff) / 255
+        self.init(red: red, green: green, blue: blue)
     }
 }
