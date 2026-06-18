@@ -191,7 +191,7 @@ private extension SessionCreationConceptView {
             chipLabel {
                 Image(systemName: agent.symbolName)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(agent.tint)
+                    .foregroundStyle(.secondary)
                 Text(model.name)
                 Text(reasoningEffort.shortTitle)
             }
@@ -352,7 +352,6 @@ private extension SessionCreationConceptView {
         .frame(height: 34)
         .frame(maxWidth: maxWidth, alignment: .leading)
         .clipped()
-        .background(Color.primary.opacity(0.1), in: Capsule())
     }
 
     var connectionStatus: some View {
