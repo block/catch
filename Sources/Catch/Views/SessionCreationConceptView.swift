@@ -8,6 +8,11 @@ public struct SessionCreationConceptView: View {
     @State private var model: ConceptModel = ConceptAgent.goose.models[0]
     @State private var project: ConceptProject = .catchProject
     @State private var isDictating = false
+    @State private var promptSelection = TextSelectionRange()
+    @State private var mentionSelectionIndex = 0
+    @State private var suppressedMentionKey: String?
+    @State private var fileMentionCompletions: [MentionCompletion] = []
+    @State private var modelInventory: [String: [ConceptModel]] = [:]
     @FocusState private var isPromptFocused: Bool
 
     let keyboardMonitorEnabled: Bool
@@ -24,11 +29,29 @@ public struct SessionCreationConceptView: View {
         !trimmedPrompt.isEmpty && store.isConnected
     }
 
+    private var activeMention: ActiveMention? {
+        ActiveMention.detect(in: store.prompt, selection: promptSelection)
+    }
+
+    private var activeMentionKey: String? {
+        activeMention?.key
+    }
+
+    private var displayedMention: ActiveMention? {
+        guard let activeMention, activeMention.key != suppressedMentionKey else { return nil }
+        return activeMention
+    }
+
+    private var mentionCompletions: [MentionCompletion] {
+        guard let displayedMention else { return [] }
+        return completions(matching: displayedMention.query)
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
             composer
             Divider().opacity(0.6)
-            recentStrip
+            completionOrRecentStrip
         }
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -37,18 +60,40 @@ public struct SessionCreationConceptView: View {
                 .stroke(.separator.opacity(0.35), lineWidth: 1)
         }
         .padding(1)
-        .onAppear { isPromptFocused = true }
+        .onAppear {
+            isPromptFocused = true
+            loadFileMentions()
+            loadModelInventory()
+        }
         .onReceive(NotificationCenter.default.publisher(for: .focusPromptField)) { _ in
             isPromptFocused = true
+        }
+        .onChange(of: activeMentionKey) { _, _ in
+            mentionSelectionIndex = 0
+            suppressedMentionKey = nil
+        }
+        .onChange(of: project.cwd) { _, _ in
+            loadFileMentions()
         }
         .background {
             if keyboardMonitorEnabled {
                 KeyboardMonitor(
                     onMove: { direction in
-                        store.moveSelection(direction: direction)
+                        if displayedMention != nil {
+                            moveMentionSelection(direction: direction)
+                        } else {
+                            store.moveSelection(direction: direction)
+                        }
+                    },
+                    onAccept: {
+                        acceptSelectedMention()
                     },
                     onEscape: {
-                        NSApp.hide(nil)
+                        if let activeMention {
+                            suppressedMentionKey = activeMention.key
+                        } else {
+                            NSApp.hide(nil)
+                        }
                     }
                 )
             }
@@ -82,8 +127,11 @@ private extension SessionCreationConceptView {
 
             PromptTextView(
                 text: $store.prompt,
+                selection: $promptSelection,
                 isFocused: $isPromptFocused,
-                onSubmit: submit
+                onSubmit: submit,
+                onMove: moveFromPrompt,
+                onAcceptCompletion: acceptSelectedMention
             )
             .frame(height: 150)
         }
@@ -131,7 +179,7 @@ private extension SessionCreationConceptView {
             ForEach(ConceptAgent.allCases) { option in
                 Button {
                     agent = option
-                    model = option.models[0]
+                    model = models(for: option)[0]
                     isPromptFocused = true
                 } label: {
                     if agent == option {
@@ -156,7 +204,7 @@ private extension SessionCreationConceptView {
 
     var modelMenu: some View {
         Menu {
-            ForEach(agent.models) { option in
+            ForEach(models(for: agent)) { option in
                 Button {
                     model = option
                     isPromptFocused = true
@@ -286,6 +334,45 @@ private extension SessionCreationConceptView {
 // MARK: - Recent strip
 
 private extension SessionCreationConceptView {
+    var completionOrRecentStrip: some View {
+        Group {
+            if displayedMention != nil {
+                mentionStrip
+            } else {
+                recentStrip
+            }
+        }
+        .frame(height: 132)
+    }
+
+    var mentionStrip: some View {
+        ScrollView {
+            VStack(spacing: 1) {
+                ForEach(Array(mentionCompletions.enumerated()), id: \.element.id) { index, completion in
+                    Button {
+                        accept(completion)
+                    } label: {
+                        MentionCompletionRow(
+                            completion: completion,
+                            isSelected: index == mentionSelectionIndex
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 11)
+            .padding(.vertical, 9)
+        }
+        .overlay {
+            if mentionCompletions.isEmpty {
+                Text("No @ matches")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
     var recentStrip: some View {
         ScrollView {
             VStack(spacing: 1) {
@@ -305,7 +392,6 @@ private extension SessionCreationConceptView {
             .padding(.horizontal, 11)
             .padding(.vertical, 9)
         }
-        .frame(height: 132)
         .overlay {
             if store.sessions.isEmpty {
                 Text(store.isConnected ? "No sessions yet" : (store.errorMessage ?? "Connecting to Goose…"))
@@ -317,12 +403,424 @@ private extension SessionCreationConceptView {
             }
         }
     }
+
+    func completions(matching query: String) -> [MentionCompletion] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let completions = MentionCompletion.agentCompletions(from: ConceptAgent.allCases)
+            + MentionCompletion.skillCompletions
+            + fileMentionCompletions
+
+        let filtered: [MentionCompletion]
+        if normalizedQuery.isEmpty {
+            filtered = completions
+        } else {
+            filtered = completions.filter { completion in
+                completion.searchText.lowercased().contains(normalizedQuery)
+            }
+        }
+
+        return Array(filtered.sorted().prefix(24))
+    }
+
+    func moveMentionSelection(direction: SelectionDirection) {
+        guard !mentionCompletions.isEmpty else { return }
+
+        switch direction {
+        case .up:
+            mentionSelectionIndex = max(0, mentionSelectionIndex - 1)
+        case .down:
+            mentionSelectionIndex = min(mentionCompletions.count - 1, mentionSelectionIndex + 1)
+        }
+    }
+
+    func moveFromPrompt(direction: SelectionDirection) -> Bool {
+        if displayedMention != nil {
+            moveMentionSelection(direction: direction)
+        } else {
+            store.moveSelection(direction: direction)
+        }
+        return true
+    }
+
+    func acceptSelectedMention() -> Bool {
+        guard displayedMention != nil, mentionCompletions.indices.contains(mentionSelectionIndex) else {
+            return false
+        }
+
+        accept(mentionCompletions[mentionSelectionIndex])
+        return true
+    }
+
+    func accept(_ completion: MentionCompletion) {
+        guard let displayedMention else { return }
+
+        let text = store.prompt as NSString
+        let replacement = completion.insertText
+        let updated = text.replacingCharacters(in: displayedMention.range, with: replacement)
+        let cursorLocation = displayedMention.range.location + (replacement as NSString).length
+
+        store.prompt = updated
+        promptSelection = TextSelectionRange(location: cursorLocation, length: 0)
+        mentionSelectionIndex = 0
+        suppressedMentionKey = nil
+        isPromptFocused = true
+    }
+
+    func loadFileMentions() {
+        let cwd = project.cwd
+
+        Task.detached(priority: .utility) {
+            let completions = MentionCompletion.loadFileCompletions(cwd: cwd)
+            await MainActor.run {
+                guard project.cwd == cwd else { return }
+                fileMentionCompletions = completions
+            }
+        }
+    }
+
+    func loadModelInventory() {
+        Task.detached(priority: .utility) {
+            let records = ModelInventoryRecord.loadFromGooseSessionDatabase()
+            await MainActor.run {
+                var grouped: [String: [ConceptModel]] = [:]
+                for record in records {
+                    grouped[record.providerID, default: []].append(
+                        ConceptModel(record.name, modelID: record.modelID)
+                    )
+                }
+
+                modelInventory = grouped
+                if !models(for: agent).contains(model) {
+                    model = models(for: agent)[0]
+                }
+            }
+        }
+    }
+
+    func models(for agent: ConceptAgent) -> [ConceptModel] {
+        let inventoryModels = agent.modelProviderIDs
+            .compactMap { modelInventory[$0] }
+            .flatMap { $0 }
+            .deduplicatedByID()
+
+        if inventoryModels.isEmpty {
+            return agent.models
+        }
+
+        return [ConceptModel("Default", modelID: nil)] + inventoryModels
+    }
+}
+
+private struct TextSelectionRange: Equatable {
+    var location: Int
+    var length: Int
+
+    init(location: Int = 0, length: Int = 0) {
+        self.location = location
+        self.length = length
+    }
+
+    init(_ range: NSRange) {
+        location = range.location
+        length = range.length
+    }
+
+    var nsRange: NSRange {
+        NSRange(location: location, length: length)
+    }
+
+    func clamped(to text: String) -> NSRange {
+        let textLength = (text as NSString).length
+        let clampedLocation = min(max(0, location), textLength)
+        let clampedLength = min(max(0, length), textLength - clampedLocation)
+        return NSRange(location: clampedLocation, length: clampedLength)
+    }
+}
+
+private struct ActiveMention: Equatable {
+    let range: NSRange
+    let query: String
+
+    var key: String {
+        "\(range.location):\(range.length):\(query)"
+    }
+
+    static func detect(in text: String, selection: TextSelectionRange) -> ActiveMention? {
+        let nsText = text as NSString
+        guard selection.length == 0, selection.location > 0, selection.location <= nsText.length else {
+            return nil
+        }
+
+        let prefix = nsText.substring(to: selection.location) as NSString
+        let atRange = prefix.range(of: "@", options: .backwards)
+        guard atRange.location != NSNotFound else { return nil }
+
+        let queryRange = NSRange(
+            location: atRange.location + atRange.length,
+            length: selection.location - atRange.location - atRange.length
+        )
+        let query = nsText.substring(with: queryRange)
+        guard query.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
+            return nil
+        }
+
+        return ActiveMention(
+            range: NSRange(location: atRange.location, length: selection.location - atRange.location),
+            query: query
+        )
+    }
+}
+
+private enum MentionCompletionKind: Int, Comparable, Sendable {
+    case agent
+    case skill
+    case file
+
+    static func < (lhs: MentionCompletionKind, rhs: MentionCompletionKind) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+
+    var label: String {
+        switch self {
+        case .agent: "Agent"
+        case .skill: "Skill"
+        case .file: "File"
+        }
+    }
+
+    var symbolName: String {
+        switch self {
+        case .agent: "person.crop.circle.badge.plus"
+        case .skill: "sparkles"
+        case .file: "doc.text"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .agent: .teal
+        case .skill: .purple
+        case .file: .blue
+        }
+    }
+}
+
+private struct MentionCompletion: Identifiable, Comparable, Sendable {
+    let id: String
+    let kind: MentionCompletionKind
+    let title: String
+    let subtitle: String
+    let insertText: String
+    let searchText: String
+
+    static func < (lhs: MentionCompletion, rhs: MentionCompletion) -> Bool {
+        if lhs.kind != rhs.kind {
+            return lhs.kind < rhs.kind
+        }
+        return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
+    }
+
+    static func agentCompletions(from agents: [ConceptAgent]) -> [MentionCompletion] {
+        agents.map { agent in
+            MentionCompletion(
+                id: "agent:\(agent.title)",
+                kind: .agent,
+                title: agent.title,
+                subtitle: "Agent",
+                insertText: "@agent:\(agent.title) ",
+                searchText: "\(agent.title) agent \(agent.providerID ?? "goose")"
+            )
+        }
+    }
+
+    static let skillCompletions: [MentionCompletion] = [
+        ("Plan", "Break work into concrete steps", "plan"),
+        ("Explore", "Research a codebase or project area", "explore"),
+        ("Code Review", "Review changes for bugs and risks", "code-review"),
+        ("Debug", "Investigate a failure or runtime issue", "debug"),
+        ("Docs", "Use documentation as context", "docs"),
+        ("Test", "Run or design verification", "test")
+    ].map { name, description, token in
+        MentionCompletion(
+            id: "skill:\(token)",
+            kind: .skill,
+            title: name,
+            subtitle: description,
+            insertText: "@skill:\(token) ",
+            searchText: "\(name) \(description) \(token)"
+        )
+    }
+
+    static func loadFileCompletions(cwd: String) -> [MentionCompletion] {
+        let rootURL = URL(fileURLWithPath: cwd, isDirectory: true).standardizedFileURL
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: rootURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return []
+        }
+
+        let ignoredDirectories: Set<String> = [
+            ".build",
+            ".git",
+            ".swiftpm",
+            "DerivedData",
+            "dist",
+            "node_modules"
+        ]
+        let resourceKeys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey]
+        guard let enumerator = FileManager.default.enumerator(
+            at: rootURL,
+            includingPropertiesForKeys: resourceKeys,
+            options: [.skipsHiddenFiles, .skipsPackageDescendants]
+        ) else {
+            return []
+        }
+
+        var completions: [MentionCompletion] = []
+        for case let fileURL as URL in enumerator {
+            let values = try? fileURL.resourceValues(forKeys: Set(resourceKeys))
+            if values?.isDirectory == true {
+                if ignoredDirectories.contains(fileURL.lastPathComponent) {
+                    enumerator.skipDescendants()
+                }
+                continue
+            }
+
+            guard values?.isRegularFile == true else { continue }
+
+            let relativePath = fileURL.path
+                .replacingOccurrences(of: rootURL.path + "/", with: "")
+            guard !relativePath.isEmpty else { continue }
+
+            completions.append(
+                MentionCompletion(
+                    id: "file:\(relativePath)",
+                    kind: .file,
+                    title: fileURL.lastPathComponent,
+                    subtitle: relativePath,
+                    insertText: "@file:\(relativePath) ",
+                    searchText: "\(fileURL.lastPathComponent) \(relativePath)"
+                )
+            )
+
+            if completions.count >= 600 {
+                break
+            }
+        }
+
+        return completions
+    }
+}
+
+private struct MentionCompletionRow: View {
+    let completion: MentionCompletion
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: completion.kind.symbolName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(completion.kind.tint)
+                .frame(width: 17)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(completion.title)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                if !completion.subtitle.isEmpty {
+                    Text(completion.subtitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+
+            Text(completion.kind.label)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.tertiary)
+                .textCase(.uppercase)
+        }
+        .padding(.horizontal, 9)
+        .frame(height: 32)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.primary.opacity(0.10))
+            }
+        }
+        .contentShape(Rectangle())
+    }
+}
+
+private struct ModelInventoryRecord: Sendable {
+    let providerID: String
+    let modelID: String
+    let name: String
+
+    static func loadFromGooseSessionDatabase() -> [ModelInventoryRecord] {
+        let dbPath = NSHomeDirectory() + "/.local/share/goose/sessions/sessions.db"
+        guard FileManager.default.fileExists(atPath: dbPath) else { return [] }
+
+        let query = """
+        WITH latest AS (
+            SELECT provider_id, MAX(COALESCE(last_updated_at, updated_at, created_at)) AS updated_at
+            FROM provider_inventory_entries
+            GROUP BY provider_id
+        )
+        SELECT e.provider_id, m.model_id, m.name
+        FROM provider_inventory_entries e
+        JOIN latest l
+            ON l.provider_id = e.provider_id
+            AND l.updated_at = COALESCE(e.last_updated_at, e.updated_at, e.created_at)
+        JOIN provider_inventory_models m
+            ON m.inventory_key = e.inventory_key
+        ORDER BY e.provider_id, m.recommended DESC, m.ordinal ASC;
+        """
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+        process.arguments = ["-tabs", dbPath, query]
+
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return []
+        }
+
+        guard process.terminationStatus == 0 else { return [] }
+
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        guard let rawOutput = String(data: data, encoding: .utf8) else { return [] }
+
+        return rawOutput
+            .split(separator: "\n")
+            .compactMap { line in
+                let columns = line.split(separator: "\t", omittingEmptySubsequences: false)
+                guard columns.count >= 3 else { return nil }
+                return ModelInventoryRecord(
+                    providerID: String(columns[0]),
+                    modelID: String(columns[1]),
+                    name: String(columns[2])
+                )
+            }
+    }
 }
 
 private struct PromptTextView: NSViewRepresentable {
     @Binding var text: String
+    @Binding var selection: TextSelectionRange
     var isFocused: FocusState<Bool>.Binding
     let onSubmit: () -> Void
+    let onMove: (SelectionDirection) -> Bool
+    let onAcceptCompletion: () -> Bool
 
     @MainActor
     func makeCoordinator() -> Coordinator {
@@ -348,7 +846,10 @@ private struct PromptTextView: NSViewRepresentable {
         textView.textContainer?.lineFragmentPadding = 0
         textView.delegate = context.coordinator
         textView.onSubmit = onSubmit
+        textView.onMove = onMove
+        textView.onAcceptCompletion = onAcceptCompletion
         textView.string = text
+        textView.setSelectedRange(selection.clamped(to: text))
 
         scrollView.documentView = textView
         context.coordinator.textView = textView
@@ -362,9 +863,16 @@ private struct PromptTextView: NSViewRepresentable {
 
         guard let textView = scrollView.documentView as? PromptNSTextView else { return }
         textView.onSubmit = onSubmit
+        textView.onMove = onMove
+        textView.onAcceptCompletion = onAcceptCompletion
 
         if textView.string != text {
             textView.string = text
+        }
+
+        let clampedSelection = selection.clamped(to: textView.string)
+        if textView.selectedRange() != clampedSelection {
+            textView.setSelectedRange(clampedSelection)
         }
 
         guard isFocused.wrappedValue else { return }
@@ -423,18 +931,47 @@ private struct PromptTextView: NSViewRepresentable {
             if parent.text != textView.string {
                 parent.text = textView.string
             }
+            parent.selection = TextSelectionRange(textView.selectedRange())
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.selection = TextSelectionRange(textView.selectedRange())
         }
     }
 }
 
 private final class PromptNSTextView: NSTextView {
     var onSubmit: (() -> Void)?
+    var onMove: ((SelectionDirection) -> Bool)?
+    var onAcceptCompletion: (() -> Bool)?
 
     override func keyDown(with event: NSEvent) {
         let activeModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         if activeModifiers == .command, event.keyCode == 36 {
             onSubmit?()
             return
+        }
+
+        if activeModifiers.isEmpty {
+            switch event.keyCode {
+            case 126:
+                if onMove?(.up) == true {
+                    return
+                }
+            case 125:
+                if onMove?(.down) == true {
+                    return
+                }
+            default:
+                break
+            }
+        }
+
+        if activeModifiers.isEmpty, event.keyCode == 36 || event.keyCode == 48 {
+            if onAcceptCompletion?() == true {
+                return
+            }
         }
 
         super.keyDown(with: event)
@@ -523,6 +1060,21 @@ private enum ConceptAgent: CaseIterable, Identifiable {
         }
     }
 
+    var modelProviderIDs: [String] {
+        switch self {
+        case .goose:
+            ["databricks_v2", "databricks"]
+        case .claudeCode:
+            ["claude-acp"]
+        case .codex:
+            ["codex-acp"]
+        case .amp:
+            ["amp-acp"]
+        case .cursor:
+            ["cursor-agent"]
+        }
+    }
+
     var symbolName: String {
         switch self {
         case .goose: "bird"
@@ -548,16 +1100,22 @@ private enum ConceptAgent: CaseIterable, Identifiable {
         case .goose:
             [
                 ConceptModel("Default", modelID: nil),
-                ConceptModel("Goose GPT-5.5", modelID: "goose-gpt-5-5")
+                ConceptModel("GPT-5.5", modelID: "compass-openai-gpt-5-5"),
+                ConceptModel("Claude Sonnet 4.6", modelID: "goose-claude-4-6-sonnet"),
+                ConceptModel("Claude Opus 4.6", modelID: "goose-claude-4-6-opus")
             ]
         case .claudeCode:
             [
                 ConceptModel("Claude Opus 4.6", modelID: "claude-opus-4-6[1m]"),
+                ConceptModel("Sonnet", modelID: "sonnet"),
+                ConceptModel("Haiku", modelID: "haiku"),
                 ConceptModel("Default", modelID: nil)
             ]
         case .codex:
             [
                 ConceptModel("GPT-5.5", modelID: "gpt-5.5"),
+                ConceptModel("GPT-5.5 High", modelID: "gpt-5.5-high"),
+                ConceptModel("GPT-5.3 Codex", modelID: "gpt-5.3-codex"),
                 ConceptModel("Default", modelID: nil)
             ]
         case .amp:
@@ -574,14 +1132,28 @@ private enum ConceptAgent: CaseIterable, Identifiable {
     }
 }
 
-private struct ConceptModel: Identifiable, Equatable {
-    let id = UUID()
+private struct ConceptModel: Identifiable, Equatable, Sendable {
+    let id: String
     let name: String
     let modelID: String?
 
     init(_ name: String, modelID: String?) {
+        id = modelID ?? "default"
         self.name = name
         self.modelID = modelID
+    }
+}
+
+private extension Array where Element == ConceptModel {
+    func deduplicatedByID() -> [ConceptModel] {
+        var seen: Set<String> = []
+        var unique: [ConceptModel] = []
+
+        for model in self where seen.insert(model.id).inserted {
+            unique.append(model)
+        }
+
+        return unique
     }
 }
 
