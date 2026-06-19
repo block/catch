@@ -993,26 +993,12 @@ private struct ConceptRecentRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(session.status == .working ? Color.green : Color.secondary.opacity(0.35))
-                .frame(width: 7, height: 7)
-
-            Image(systemName: "bird")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Color.teal)
-                .frame(width: 16)
-
             Text(session.displayTitle)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.primary)
                 .lineLimit(1)
 
             Spacer(minLength: 8)
-
-            Text(session.lastEvent.isEmpty ? "Goose" : session.lastEvent)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
 
             if session.status == .working {
                 ProgressView()
