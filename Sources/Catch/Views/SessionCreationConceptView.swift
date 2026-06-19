@@ -230,13 +230,10 @@ private extension SessionCreationConceptView {
                 }
             }
         } label: {
-            chipLabel(maxWidth: 190) {
-                Text(model.name)
-                Text(reasoningEffort.shortTitle)
-            }
+            Text(modelConfigurationTitle)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
     }
 
     var projectMenu: some View {
@@ -254,31 +251,14 @@ private extension SessionCreationConceptView {
                 }
             }
         } label: {
-            chipLabel(maxWidth: 150) {
-                Text(project.title)
-            }
+            Text(project.title)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
     }
 
-    func chipLabel<Content: View>(maxWidth: CGFloat? = nil, @ViewBuilder _ content: () -> Content) -> some View {
-        HStack(spacing: 6) {
-            content()
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .layoutPriority(1)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(.primary)
-        .lineLimit(1)
-        .padding(.horizontal, 11)
-        .frame(height: 34)
-        .frame(maxWidth: maxWidth, alignment: .leading)
-        .clipped()
+    var modelConfigurationTitle: String {
+        "\(model.name) \(reasoningEffort.shortTitle)"
     }
 
     var connectionStatus: some View {
