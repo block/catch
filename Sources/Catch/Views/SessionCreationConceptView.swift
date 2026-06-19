@@ -149,8 +149,10 @@ private extension SessionCreationConceptView {
 
     var controlBar: some View {
         HStack(spacing: 8) {
-            addMenu
-            configurationMenu
+            HStack(spacing: 4) {
+                addMenu
+                configurationMenu
+            }
 
             Spacer(minLength: 8)
 
@@ -172,7 +174,7 @@ private extension SessionCreationConceptView {
             Button { } label: { Label("Add Skill", systemImage: "sparkles") }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 16, weight: .regular))
                 .frame(width: 30, height: 30)
                 .contentShape(Capsule())
         }
