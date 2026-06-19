@@ -230,10 +230,9 @@ private extension SessionCreationConceptView {
                 }
             }
         } label: {
-            Text(modelConfigurationTitle)
+            CreationMenuLabel(title: modelConfigurationTitle)
         }
-        .menuStyle(.button)
-        .buttonStyle(.borderless)
+        .creationMenuStyle()
     }
 
     var projectMenu: some View {
@@ -251,10 +250,9 @@ private extension SessionCreationConceptView {
                 }
             }
         } label: {
-            Text(project.title)
+            CreationMenuLabel(title: project.title)
         }
-        .menuStyle(.button)
-        .buttonStyle(.borderless)
+        .creationMenuStyle()
     }
 
     var modelConfigurationTitle: String {
@@ -264,10 +262,7 @@ private extension SessionCreationConceptView {
     var connectionStatus: some View {
         Group {
             if store.isConnected {
-                Text("⌘↵")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                    .opacity(canSubmit ? 1 : 0)
+                EmptyView()
             } else {
                 ProgressView()
                     .controlSize(.mini)
@@ -283,15 +278,14 @@ private extension SessionCreationConceptView {
             submit()
         } label: {
             Image(systemName: "arrow.up")
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(canSubmit ? Color.white : Color.secondary)
-                .frame(width: 38, height: 38)
-                .background(canSubmit ? agent.tint : Color.primary.opacity(0.08), in: Circle())
+                .frame(width: 30, height: 30)
+                .background(canSubmit ? Color.accentColor : Color.primary.opacity(0.08), in: Circle())
         }
         .buttonStyle(.plain)
         .disabled(!canSubmit)
         .keyboardShortcut(.return, modifiers: [.command])
-        .animation(.easeInOut(duration: 0.15), value: canSubmit)
         .help("Start session")
     }
 
@@ -1320,6 +1314,66 @@ private extension Color {
         let green = Double((value >> 8) & 0xff) / 255
         let blue = Double(value & 0xff) / 255
         self.init(red: red, green: green, blue: blue)
+    }
+}
+
+private struct CreationMenuLabel: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Image(systemName: "chevron.down")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+        }
+        .font(.system(size: 13, weight: .regular))
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 8)
+        .frame(height: 30)
+        .contentShape(Capsule())
+    }
+}
+
+private struct CreationMenuButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        CreationMenuButton(configuration: configuration)
+    }
+
+    private struct CreationMenuButton: View {
+        let configuration: Configuration
+        @State private var isHovered = false
+
+        var body: some View {
+            configuration.label
+                .background {
+                    Capsule()
+                        .fill(backgroundColor)
+                }
+                .onHover { isHovered = $0 }
+        }
+
+        private var backgroundColor: Color {
+            if configuration.isPressed {
+                Color.primary.opacity(0.16)
+            } else if isHovered {
+                Color.primary.opacity(0.08)
+            } else {
+                Color.clear
+            }
+        }
+    }
+}
+
+private extension View {
+    func creationMenuStyle() -> some View {
+        self
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .buttonStyle(CreationMenuButtonStyle())
     }
 }
 
