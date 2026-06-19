@@ -173,11 +173,10 @@ private extension SessionCreationConceptView {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .semibold))
-                .frame(width: 34, height: 34)
-                .background(Color.primary.opacity(0.08), in: Circle())
+                .frame(width: 30, height: 30)
+                .contentShape(Capsule())
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .creationMenuStyle()
         .fixedSize()
         .help("Additional inputs are not wired yet")
     }
@@ -207,9 +206,9 @@ private extension SessionCreationConceptView {
                         isPromptFocused = true
                     } label: {
                         if model == option {
-                            Label(option.name, systemImage: "checkmark")
+                            Label(displayName(for: option), systemImage: "checkmark")
                         } else {
-                            Text(option.name)
+                            Text(displayName(for: option))
                         }
                     }
                 }
@@ -256,7 +255,11 @@ private extension SessionCreationConceptView {
     }
 
     var modelConfigurationTitle: String {
-        "\(model.name) \(reasoningEffort.shortTitle)"
+        if reasoningEffort == .off {
+            displayName(for: model)
+        } else {
+            "\(displayName(for: model)) \(reasoningEffort.shortTitle)"
+        }
     }
 
     var connectionStatus: some View {
@@ -545,6 +548,14 @@ private extension SessionCreationConceptView {
         }
 
         return ([ConceptModel("Default", modelID: nil)] + inventoryModels).deduplicatedByID()
+    }
+
+    func displayName(for model: ConceptModel) -> String {
+        guard agent == .claudeCode else {
+            return model.name
+        }
+
+        return model.name.formattedClaudeCodeModelName
     }
 }
 
@@ -1152,6 +1163,51 @@ private extension Array where Element == ConceptModel {
         }
 
         return unique
+    }
+}
+
+private extension String {
+    var formattedClaudeCodeModelName: String {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return self }
+
+        if trimmed.rangeOfCharacter(from: .uppercaseLetters) != nil {
+            return trimmed
+        }
+
+        let tokens = trimmed
+            .replacingOccurrences(of: "_", with: "-")
+            .split(separator: "-")
+            .map(String.init)
+
+        guard tokens.count > 1 else {
+            return trimmed.capitalizedModelToken
+        }
+
+        var formatted: [String] = []
+        var index = tokens.startIndex
+        while index < tokens.endIndex {
+            let token = tokens[index]
+            let nextIndex = tokens.index(after: index)
+
+            if token.allSatisfy(\.isNumber),
+               nextIndex < tokens.endIndex,
+               tokens[nextIndex].first?.isNumber == true
+            {
+                formatted.append("\(token).\(tokens[nextIndex])")
+                index = tokens.index(after: nextIndex)
+            } else {
+                formatted.append(token.capitalizedModelToken)
+                index = nextIndex
+            }
+        }
+
+        return formatted.joined(separator: " ")
+    }
+
+    private var capitalizedModelToken: String {
+        guard let first else { return self }
+        return String(first).uppercased() + dropFirst()
     }
 }
 
