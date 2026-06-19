@@ -11,7 +11,6 @@ public struct SessionCreationConceptView: View {
     @State private var promptSelection = TextSelectionRange()
     @State private var mentionSelectionIndex = 0
     @State private var suppressedMentionKey: String?
-    @State private var isConfigurationPopoverPresented = false
     @State private var gooseAgentCompletions: [MentionCompletion] = GooseBundledAgent.loadMentionCompletions()
     @State private var skillMentionCompletions: [MentionCompletion] = MentionCompletion.defaultSkillCompletions
     @State private var gooseProjects: [GooseProjectOption] = [.none]
@@ -152,11 +151,11 @@ private extension SessionCreationConceptView {
         HStack(spacing: 8) {
             addMenu
             configurationMenu
-            projectMenu
 
             Spacer(minLength: 8)
 
             connectionStatus
+            projectMenu
             sendButton
         }
     }
@@ -184,129 +183,60 @@ private extension SessionCreationConceptView {
     }
 
     var configurationMenu: some View {
-        Button {
-            isConfigurationPopoverPresented.toggle()
-            isPromptFocused = true
+        Menu {
+            Section("Agent") {
+                ForEach(ConceptAgent.allCases) { option in
+                    Button {
+                        agent = option
+                        model = models(for: option)[0]
+                        isPromptFocused = true
+                    } label: {
+                        if agent == option {
+                            Label(option.title, systemImage: "checkmark")
+                        } else {
+                            Text(option.title)
+                        }
+                    }
+                }
+            }
+
+            Section("Model") {
+                ForEach(models(for: agent)) { option in
+                    Button {
+                        model = option
+                        isPromptFocused = true
+                    } label: {
+                        if model == option {
+                            Label(option.name, systemImage: "checkmark")
+                        } else {
+                            Text(option.name)
+                        }
+                    }
+                }
+            }
+
+            Section("Reasoning effort") {
+                ForEach(ReasoningEffort.allCases) { option in
+                    Button {
+                        reasoningEffort = option
+                        isPromptFocused = true
+                    } label: {
+                        if reasoningEffort == option {
+                            Label(option.title, systemImage: "checkmark")
+                        } else {
+                            Text(option.title)
+                        }
+                    }
+                }
+            }
         } label: {
-            chipLabel {
-                Image(systemName: agent.symbolName)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.secondary)
+            chipLabel(maxWidth: 190) {
                 Text(model.name)
                 Text(reasoningEffort.shortTitle)
             }
         }
-        .buttonStyle(.plain)
-        .popover(isPresented: $isConfigurationPopoverPresented, arrowEdge: .bottom) {
-            configurationPopover
-        }
-    }
-
-    var configurationPopover: some View {
-        HStack(alignment: .top, spacing: 32) {
-            configurationColumn(title: "Agent") {
-                ForEach(ConceptAgent.allCases) { option in
-                    configurationOptionButton(
-                        title: option.title,
-                        symbolName: option.symbolName,
-                        tint: option.tint,
-                        isSelected: agent == option
-                    ) {
-                        agent = option
-                        model = models(for: option)[0]
-                        isPromptFocused = true
-                    }
-                }
-            }
-
-            configurationColumn(title: "Model") {
-                ForEach(models(for: agent)) { option in
-                    configurationOptionButton(
-                        title: option.name,
-                        symbolName: "square.stack.3d.up",
-                        tint: .red,
-                        isSelected: model == option
-                    ) {
-                        model = option
-                        isPromptFocused = true
-                    }
-                }
-            }
-
-            configurationColumn(title: "Reasoning effort") {
-                ForEach(ReasoningEffort.allCases) { option in
-                    configurationOptionButton(
-                        title: option.title,
-                        symbolName: nil,
-                        tint: .secondary,
-                        isSelected: reasoningEffort == option
-                    ) {
-                        reasoningEffort = option
-                        isPromptFocused = true
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .frame(width: 690, height: 340, alignment: .topLeading)
-    }
-
-    func configurationColumn<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 8)
-
-            VStack(spacing: 4) {
-                content()
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    func configurationOptionButton(
-        title: String,
-        symbolName: String?,
-        tint: Color,
-        isSelected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 9) {
-                if let symbolName {
-                    Image(systemName: symbolName)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(tint)
-                        .frame(width: 18)
-                }
-
-                Text(title)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-
-                Spacer(minLength: 8)
-
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 36)
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.primary.opacity(0.08))
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
     }
 
     var projectMenu: some View {
@@ -325,9 +255,6 @@ private extension SessionCreationConceptView {
             }
         } label: {
             chipLabel(maxWidth: 150) {
-                Circle()
-                    .fill(project.tint)
-                    .frame(width: 8, height: 8)
                 Text(project.title)
             }
         }
@@ -1413,5 +1340,51 @@ private extension Color {
         let green = Double((value >> 8) & 0xff) / 255
         let blue = Double(value & 0xff) / 255
         self.init(red: red, green: green, blue: blue)
+    }
+}
+
+#Preview("Session Creation Concept") {
+    SessionCreationConceptPreviewHost()
+}
+
+private struct SessionCreationConceptPreviewHost: View {
+    @StateObject private var store = SessionStore(appSupportDirectoryName: "CatchPreview")
+
+    var body: some View {
+        SessionCreationConceptView(keyboardMonitorEnabled: false)
+            .environmentObject(store)
+            .frame(width: 560, height: 430)
+            .onAppear {
+                store.isConnected = true
+                store.sessions = [
+                    CodexSession(
+                        provider: .goose,
+                        sessionID: "preview-goose-1",
+                        cwd: "~/Development/catch",
+                        title: "Square iOS Dependency Graph R...",
+                        updatedAt: Date().addingTimeInterval(-240),
+                        status: .idle,
+                        lastEvent: "Idle"
+                    ),
+                    CodexSession(
+                        provider: .goose,
+                        sessionID: "preview-goose-2",
+                        cwd: "~/Development/catch",
+                        title: "At symbol",
+                        updatedAt: Date().addingTimeInterval(-960),
+                        status: .idle,
+                        lastEvent: "Idle"
+                    ),
+                    CodexSession(
+                        provider: .claudeCode,
+                        sessionID: "preview-claude-1",
+                        cwd: "~/Development/catch",
+                        title: "Today's date",
+                        updatedAt: Date().addingTimeInterval(-3600),
+                        status: .idle,
+                        lastEvent: "Idle"
+                    )
+                ]
+            }
     }
 }
