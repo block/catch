@@ -28,6 +28,11 @@ let package = Package(
             dependencies: ["CatchKit"],
             path: "Sources/CatchApp",
             swiftSettings: concurrencySettings
+        ),
+        .testTarget(
+            name: "CatchTests",
+            dependencies: ["CatchKit"],
+            swiftSettings: concurrencySettings
         )
     ],
     swiftLanguageModes: [.v6]

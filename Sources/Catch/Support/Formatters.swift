@@ -1,6 +1,16 @@
 import Foundation
 
 enum AppFormatters {
+    private enum Strings {
+        static var compactAgeNow: String {
+            String(
+                localized: "session.age.now",
+                defaultValue: "now",
+                comment: "Compact session timestamp for sessions updated less than one minute ago."
+            )
+        }
+    }
+
     private static func makeRelativeDateFormatter() -> RelativeDateTimeFormatter {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
@@ -20,14 +30,14 @@ enum AppFormatters {
         return makeRelativeDateFormatter().localizedString(for: date, relativeTo: now)
     }
 
-    static func compactAge(for date: Date?) -> String {
+    static func compactAge(for date: Date?, relativeTo now: Date = Date()) -> String {
         guard let date else {
             return "-"
         }
 
-        let seconds = max(0, Int(Date().timeIntervalSince(date)))
+        let seconds = max(0, Int(now.timeIntervalSince(date)))
         if seconds < 60 {
-            return "\(max(1, seconds))s"
+            return Strings.compactAgeNow
         }
 
         let minutes = seconds / 60
