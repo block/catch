@@ -134,7 +134,7 @@ private extension SessionCreationConceptView {
                 Text("Ask \(agent.title) to…")
                     .font(.system(size: promptFontSize, weight: .regular))
                     .foregroundStyle(.tertiary)
-                    .padding(.top, 9)
+                    .padding(.top, promptInputVerticalInset - promptInputTopOverflow)
                     .allowsHitTesting(false)
             }
 
