@@ -2,6 +2,9 @@ import AppKit
 import SwiftUI
 
 private let promptFontSize: CGFloat = 19
+private let promptInputHorizontalInset: CGFloat = 16
+private let promptInputVerticalInset: CGFloat = 12
+private let promptInputTopOverflow: CGFloat = 6
 
 /// Session-first creation UI backed by Goose's `goose serve` ACP+ server.
 public struct SessionCreationConceptView: View {
@@ -131,8 +134,7 @@ private extension SessionCreationConceptView {
                 Text("Ask \(agent.title) to…")
                     .font(.system(size: promptFontSize, weight: .regular))
                     .foregroundStyle(.tertiary)
-                    .padding(.top, 8)
-                    .padding(.leading, 5)
+                    .padding(.top, 9)
                     .allowsHitTesting(false)
             }
 
@@ -144,6 +146,8 @@ private extension SessionCreationConceptView {
                 onMove: moveFromPrompt,
                 onAcceptCompletion: acceptSelectedMention
             )
+            .padding(.horizontal, -promptInputHorizontalInset)
+            .padding(.top, -promptInputTopOverflow)
             .frame(height: 150)
         }
     }
@@ -913,6 +917,9 @@ private struct PromptTextView: NSViewRepresentable {
         scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = false
         scrollView.hasHorizontalScroller = false
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentView.drawsBackground = false
+        scrollView.contentView.postsBoundsChangedNotifications = true
 
         let textView = PromptNSTextView()
         textView.drawsBackground = false
@@ -921,8 +928,13 @@ private struct PromptTextView: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.font = NSFont.systemFont(ofSize: promptFontSize, weight: .regular)
         textView.textColor = .labelColor
-        textView.textContainerInset = NSSize(width: 0, height: 6)
+        // Inset needed to avoid clipping caret and Voice Control glow.
+        textView.textContainerInset = NSSize(width: promptInputHorizontalInset, height: promptInputVerticalInset)
         textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
         textView.delegate = context.coordinator
         textView.onSubmit = onSubmit
         textView.onMove = onMove
