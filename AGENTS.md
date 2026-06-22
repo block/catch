@@ -1,5 +1,11 @@
 After any visible UI change, show the user a screenshot as the last user-visible item in the turn. For macOS app UI, capture only the app window when possible, then embed it in chat with the `view_image` tool; do not rely on file links or Computer Use state screenshots because those may not be visible to the user. Because final text after a `view_image` result can cause the screenshot to be collapsed into previous messages, avoid sending trailing final text after the embedded screenshot unless the user explicitly asks for a written summary.
 
+# Project Specs
+
+Honor checked-in project specs when making changes. When a change touches behavior covered by a spec, read the relevant spec first, test the portions of the spec that are at risk of being broken, and keep the spec updated as part of the change.
+
+If you intentionally change a spec requirement, explicitly call that out to the user instead of presenting it as an ordinary implementation detail.
+
 # macOS App Testing
 
 Default to the test build for agent-driven UI checks:
@@ -16,6 +22,7 @@ For routine UI interaction, prefer non-invasive process/window-targeted automati
 - For keyboard navigation, post key events directly to the `CatchTest` process by PID rather than clicking the real desktop.
 - Capture screenshots by CoreGraphics window ID with `screencapture -l <window-id>` rather than by screen rectangle. This can capture the test panel even when it is behind other windows.
 - Avoid coordinate-based mouse clicks unless the behavior under test is specifically real click/focus/activation behavior.
+- After every commit to `main`, install and relaunch the normal build with `./script/build_and_run.sh`.
 
 Useful pattern for finding the test panel window ID:
 
