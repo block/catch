@@ -5,7 +5,7 @@ private let promptFontSize: CGFloat = 19
 private let promptInputHorizontalInset: CGFloat = 16
 private let promptInputVerticalInset: CGFloat = 12
 private let promptInputTopOverflow: CGFloat = 6
-private let sessionActivitySpinnerSize: CGFloat = 13
+private let sessionActivitySpinnerSize: CGFloat = 11
 
 /// Session-first creation UI backed by Goose's `goose serve` ACP+ server.
 public struct SessionCreationConceptView: View {
