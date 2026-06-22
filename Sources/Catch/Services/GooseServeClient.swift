@@ -293,6 +293,7 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         process.standardError = stderr
 
         var environment = ProcessInfo.processInfo.environment
+        environment.removeAppBundleIdentity()
         environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         environment["GOOSE_SERVER__SECRET_KEY"] = environment["GOOSE_SERVER__SECRET_KEY"] ?? UUID().uuidString
         process.environment = environment
@@ -664,6 +665,15 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
             "/usr/local/lib/node_modules/@aaif/goose/node_modules/@aaif/goose-binary-darwin-arm64/bin/goose",
             "/usr/local/lib/node_modules/@aaif/goose/node_modules/@aaif/goose-binary-darwin-x64/bin/goose"
         ].compactMap { $0 }
+    }
+}
+
+private extension Dictionary where Key == String, Value == String {
+    mutating func removeAppBundleIdentity() {
+        self["__CFBundleIdentifier"] = nil
+        self["XPC_FLAGS"] = nil
+        self["XPC_SERVICE_NAME"] = nil
+        self["LaunchInstanceID"] = nil
     }
 }
 

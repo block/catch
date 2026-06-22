@@ -16,7 +16,7 @@ public struct SessionCreationConceptView: View {
     @State private var gooseProjects: [GooseProjectOption] = [.none]
     @State private var fileMentionCompletions: [MentionCompletion] = []
     @State private var modelInventory: [String: [ConceptModel]] = [:]
-    @FocusState private var isPromptFocused: Bool
+    @State private var isPromptFocused = false
 
     let keyboardMonitorEnabled: Bool
 
@@ -64,14 +64,16 @@ public struct SessionCreationConceptView: View {
         }
         .padding(1)
         .onAppear {
-            isPromptFocused = true
+            focusPrompt()
             loadFileMentions()
             if store.isConnected {
                 loadCreationMetadata()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .focusPromptField)) { _ in
-            isPromptFocused = true
+        .onChange(of: isPromptFocused) { _, isFocused in
+            if isFocused {
+                store.selectedSessionID = nil
+            }
         }
         .onChange(of: store.isConnected) { _, isConnected in
             if isConnected {
@@ -89,11 +91,8 @@ public struct SessionCreationConceptView: View {
             if keyboardMonitorEnabled {
                 KeyboardMonitor(
                     onMove: { direction in
-                        if displayedMention != nil {
-                            moveMentionSelection(direction: direction)
-                        } else {
-                            store.moveSelection(direction: direction)
-                        }
+                        guard !isPromptFocused else { return false }
+                        return moveSessionSelection(direction: direction)
                     },
                     onAccept: {
                         acceptSelectedMention()
@@ -102,7 +101,7 @@ public struct SessionCreationConceptView: View {
                         if let activeMention {
                             suppressedMentionKey = activeMention.key
                         } else {
-                            NSApp.hide(nil)
+                            NotificationCenter.default.post(name: .hideFloatingWindow, object: nil)
                         }
                     }
                 )
@@ -189,7 +188,7 @@ private extension SessionCreationConceptView {
                 ForEach(ConceptAgent.allCases) { option in
                     Button {
                         agent = option
-                        model = models(for: option)[0]
+                        model = sortedModels(for: option)[0]
                         isPromptFocused = true
                     } label: {
                         if agent == option {
@@ -202,7 +201,7 @@ private extension SessionCreationConceptView {
             }
 
             Section("Model") {
-                ForEach(models(for: agent)) { option in
+                ForEach(sortedModels(for: agent)) { option in
                     Button {
                         model = option
                         isPromptFocused = true
@@ -357,8 +356,7 @@ private extension SessionCreationConceptView {
             VStack(spacing: 1) {
                 ForEach(store.sessions) { session in
                     Button {
-                        store.selectedSessionID = session.id
-                        isPromptFocused = true
+                        selectSession(session.id)
                     } label: {
                         ConceptRecentRow(
                             session: session,
@@ -416,13 +414,71 @@ private extension SessionCreationConceptView {
         }
     }
 
-    func moveFromPrompt(direction: SelectionDirection) -> Bool {
+    func moveFromPrompt(direction: SelectionDirection, context: PromptMoveContext) -> Bool {
         if displayedMention != nil {
             moveMentionSelection(direction: direction)
-        } else {
-            store.moveSelection(direction: direction)
+            return true
         }
+
+        guard direction == .down, context.isCursorOnLastLine else {
+            return false
+        }
+
+        selectFirstSession()
+        return store.selectedSessionID != nil
+    }
+
+    func moveSessionSelection(direction: SelectionDirection) -> Bool {
+        guard !store.sessions.isEmpty else { return false }
+
+        guard let selectedSessionID = store.selectedSessionID,
+              let currentIndex = store.sessions.firstIndex(where: { $0.id == selectedSessionID })
+        else {
+            if direction == .down {
+                selectFirstSession()
+                return store.selectedSessionID != nil
+            }
+            return false
+        }
+
+        switch direction {
+        case .down:
+            let nextIndex = min(store.sessions.index(before: store.sessions.endIndex), currentIndex + 1)
+            selectSession(store.sessions[nextIndex].id)
+        case .up:
+            if currentIndex == store.sessions.startIndex {
+                focusPromptAtEnd()
+            } else {
+                let previousIndex = max(store.sessions.startIndex, currentIndex - 1)
+                selectSession(store.sessions[previousIndex].id)
+            }
+        }
+
         return true
+    }
+
+    func selectFirstSession() {
+        guard let firstSession = store.sessions.first else { return }
+        selectSession(firstSession.id)
+    }
+
+    func selectSession(_ id: String) {
+        isPromptFocused = false
+        store.selectedSessionID = id
+    }
+
+    func focusPrompt() {
+        store.selectedSessionID = nil
+        isPromptFocused = true
+    }
+
+    func focusPromptAtEnd() {
+        let promptLength = (store.prompt as NSString).length
+        promptSelection = TextSelectionRange(location: promptLength, length: 0)
+        focusPrompt()
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .focusPromptField, object: nil)
+        }
     }
 
     func acceptSelectedMention() -> Bool {
@@ -552,12 +608,22 @@ private extension SessionCreationConceptView {
         return ([ConceptModel("Default", modelID: nil)] + inventoryModels).deduplicatedByID()
     }
 
-    func displayName(for model: ConceptModel) -> String {
+    func sortedModels(for agent: ConceptAgent) -> [ConceptModel] {
+        models(for: agent).sorted {
+            displayName(for: $0, agent: agent).localizedStandardCompare(displayName(for: $1, agent: agent)) == .orderedAscending
+        }
+    }
+
+    func displayName(for model: ConceptModel, agent: ConceptAgent) -> String {
         guard agent == .claudeCode else {
             return model.name
         }
 
         return model.name.formattedClaudeCodeModelName
+    }
+
+    func displayName(for model: ConceptModel) -> String {
+        displayName(for: model, agent: agent)
     }
 }
 
@@ -828,9 +894,9 @@ private struct MentionCompletionRow: View {
 private struct PromptTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var selection: TextSelectionRange
-    var isFocused: FocusState<Bool>.Binding
+    @Binding var isFocused: Bool
     let onSubmit: () -> Void
-    let onMove: (SelectionDirection) -> Bool
+    let onMove: (SelectionDirection, PromptMoveContext) -> Bool
     let onAcceptCompletion: () -> Bool
 
     @MainActor
@@ -871,6 +937,7 @@ private struct PromptTextView: NSViewRepresentable {
     @MainActor
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
+        context.coordinator.wantsFocus = isFocused
 
         guard let textView = scrollView.documentView as? PromptNSTextView else { return }
         textView.onSubmit = onSubmit
@@ -886,10 +953,12 @@ private struct PromptTextView: NSViewRepresentable {
             textView.setSelectedRange(clampedSelection)
         }
 
-        guard isFocused.wrappedValue else { return }
-
         DispatchQueue.main.async {
-            context.coordinator.focusTextView()
+            if context.coordinator.wantsFocus {
+                context.coordinator.focusTextView()
+            } else {
+                context.coordinator.resignTextViewFocus()
+            }
         }
     }
 
@@ -897,6 +966,7 @@ private struct PromptTextView: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var parent: PromptTextView
         weak var textView: PromptNSTextView?
+        var wantsFocus = false
         nonisolated(unsafe) private var focusObserver: NSObjectProtocol?
 
         init(parent: PromptTextView) {
@@ -918,7 +988,8 @@ private struct PromptTextView: NSViewRepresentable {
                 queue: .main
             ) { [weak self] _ in
                 Task { @MainActor in
-                    self?.parent.isFocused.wrappedValue = true
+                    self?.parent.isFocused = true
+                    self?.wantsFocus = true
                     self?.focusTextView()
                 }
             }
@@ -926,14 +997,23 @@ private struct PromptTextView: NSViewRepresentable {
 
         func focusTextView() {
             guard let textView, let window = textView.window else { return }
+            guard window.isVisible, window.isKeyWindow else { return }
 
             if window.firstResponder !== textView {
                 window.makeFirstResponder(textView)
             }
         }
 
+        func resignTextViewFocus() {
+            guard let textView, let window = textView.window else { return }
+
+            if window.firstResponder === textView {
+                window.makeFirstResponder(nil)
+            }
+        }
+
         func textDidBeginEditing(_ notification: Notification) {
-            parent.isFocused.wrappedValue = true
+            parent.isFocused = true
         }
 
         func textDidChange(_ notification: Notification) {
@@ -952,9 +1032,13 @@ private struct PromptTextView: NSViewRepresentable {
     }
 }
 
+private struct PromptMoveContext {
+    let isCursorOnLastLine: Bool
+}
+
 private final class PromptNSTextView: NSTextView {
     var onSubmit: (() -> Void)?
-    var onMove: ((SelectionDirection) -> Bool)?
+    var onMove: ((SelectionDirection, PromptMoveContext) -> Bool)?
     var onAcceptCompletion: (() -> Bool)?
 
     override func keyDown(with event: NSEvent) {
@@ -967,11 +1051,11 @@ private final class PromptNSTextView: NSTextView {
         if activeModifiers.isEmpty {
             switch event.keyCode {
             case 126:
-                if onMove?(.up) == true {
+                if onMove?(.up, moveContext()) == true {
                     return
                 }
             case 125:
-                if onMove?(.down) == true {
+                if onMove?(.down, moveContext()) == true {
                     return
                 }
             default:
@@ -986,6 +1070,43 @@ private final class PromptNSTextView: NSTextView {
         }
 
         super.keyDown(with: event)
+    }
+
+    private func moveContext() -> PromptMoveContext {
+        PromptMoveContext(isCursorOnLastLine: isCursorOnLastVisualLine)
+    }
+
+    private var isCursorOnLastVisualLine: Bool {
+        guard selectedRange().length == 0,
+              let layoutManager,
+              let textContainer
+        else {
+            return false
+        }
+
+        layoutManager.ensureLayout(for: textContainer)
+
+        let textLength = (string as NSString).length
+        let cursorLocation = min(selectedRange().location, textLength)
+        let cursorGlyphIndex: Int
+        if textLength == 0 {
+            cursorGlyphIndex = 0
+        } else {
+            cursorGlyphIndex = layoutManager.glyphIndexForCharacter(at: max(0, min(cursorLocation, textLength - 1)))
+        }
+
+        var cursorLineRange = NSRange(location: 0, length: 0)
+        _ = layoutManager.lineFragmentRect(forGlyphAt: cursorGlyphIndex, effectiveRange: &cursorLineRange)
+
+        let glyphCount = layoutManager.numberOfGlyphs
+        guard glyphCount > 0 else {
+            return true
+        }
+
+        var lastLineRange = NSRange(location: 0, length: 0)
+        _ = layoutManager.lineFragmentRect(forGlyphAt: glyphCount - 1, effectiveRange: &lastLineRange)
+
+        return NSIntersectionRange(cursorLineRange, lastLineRange).length > 0
     }
 }
 

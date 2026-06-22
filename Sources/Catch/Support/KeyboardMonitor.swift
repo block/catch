@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 struct KeyboardMonitor: NSViewRepresentable {
-    let onMove: (SelectionDirection) -> Void
+    let onMove: (SelectionDirection) -> Bool
     var onAccept: () -> Bool = { false }
     let onEscape: () -> Void
 
@@ -27,13 +27,13 @@ struct KeyboardMonitor: NSViewRepresentable {
     }
 
     final class Coordinator {
-        var onMove: (SelectionDirection) -> Void
+        var onMove: (SelectionDirection) -> Bool
         var onAccept: () -> Bool
         var onEscape: () -> Void
         private var monitor: Any?
 
         init(
-            onMove: @escaping (SelectionDirection) -> Void,
+            onMove: @escaping (SelectionDirection) -> Bool,
             onAccept: @escaping () -> Bool,
             onEscape: @escaping () -> Void
         ) {
@@ -53,11 +53,15 @@ struct KeyboardMonitor: NSViewRepresentable {
 
                 switch event.keyCode {
                 case 126:
-                    self?.onMove(.up)
-                    return nil
+                    if self?.onMove(.up) == true {
+                        return nil
+                    }
+                    return event
                 case 125:
-                    self?.onMove(.down)
-                    return nil
+                    if self?.onMove(.down) == true {
+                        return nil
+                    }
+                    return event
                 case 36, 48:
                     if self?.onAccept() == true {
                         return nil

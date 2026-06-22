@@ -5,7 +5,7 @@ public final class SessionStore: ObservableObject {
     @Published var sessions: [CodexSession] = []
     @Published var selectedSessionID: String? {
         didSet {
-            ensureSelection()
+            pruneSelection()
         }
     }
     @Published var prompt = ""
@@ -160,7 +160,7 @@ public final class SessionStore: ObservableObject {
         }
         expireStaleWorkingSessions(now: now)
 
-        ensureSelection()
+        pruneSelection()
     }
 
     private func upsert(_ session: CodexSession) {
@@ -176,19 +176,12 @@ public final class SessionStore: ObservableObject {
             lastActivityBySessionID[session.id] = nil
         }
 
-        ensureSelection()
+        pruneSelection()
     }
 
-    private func ensureSelection() {
-        guard !sessions.isEmpty else {
-            if selectedSessionID != nil {
-                selectedSessionID = nil
-            }
-            return
-        }
-
-        if selectedSessionID == nil || !sessions.contains(where: { $0.id == selectedSessionID }) {
-            selectedSessionID = sessions.first?.id
+    private func pruneSelection() {
+        if let selectedSessionID, !sessions.contains(where: { $0.id == selectedSessionID }) {
+            self.selectedSessionID = nil
         }
     }
 
