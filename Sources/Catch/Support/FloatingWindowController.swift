@@ -13,6 +13,28 @@ public final class FloatingWindowController: NSObject {
         self.store = store
         self.isTestBuild = isTestBuild
         super.init()
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(hideWindowFromNotification),
+            name: .hideFloatingWindow,
+            object: nil,
+        )
+
+        if !isTestBuild {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(appDidResignActive),
+                name: NSApplication.didResignActiveNotification,
+                object: nil,
+            )
+            NSWorkspace.shared.notificationCenter.addObserver(
+                self,
+                selector: #selector(workspaceDidActivateApplication),
+                name: NSWorkspace.didActivateApplicationNotification,
+                object: nil
+            )
+        }
     }
 
     public func showWindow() {
@@ -37,12 +59,12 @@ public final class FloatingWindowController: NSObject {
     }
 
     func hideWindow() {
-        guard isHidingWindow == false else { return }
-
+        guard let panel, panel.isVisible else { return }
         isHidingWindow = true
-        defer { isHidingWindow = false }
-
-        panel?.orderOut(nil)
+        panel.orderOut(nil)
+        DispatchQueue.main.async { [weak self] in
+            self?.isHidingWindow = false
+        }
     }
 
     private func makePanel() -> FloatingPanel {
@@ -90,21 +112,38 @@ public final class FloatingWindowController: NSObject {
         let clampedY = max(visibleFrame.minY + 16, targetY)
         panel.setFrameOrigin(NSPoint(x: clampedX, y: clampedY))
     }
-}
 
-extension FloatingWindowController: NSWindowDelegate {
-    public func windowDidResignKey(_ notification: Notification) {
-        guard !isTestBuild else {
-            return
-        }
+    @objc private func hideWindowFromNotification() {
+        hideWindow()
+    }
 
-        guard let panel,
-              notification.object as? NSWindow === panel,
-              panel.isVisible
+    @objc private func appDidResignActive() {
+        hideWindow()
+    }
+
+    @objc private func workspaceDidActivateApplication(_ notification: Notification) {
+        guard let activatedApp = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              activatedApp.processIdentifier != ProcessInfo.processInfo.processIdentifier
         else {
             return
         }
 
         hideWindow()
+    }
+}
+
+extension FloatingWindowController: NSWindowDelegate {
+    public func windowDidBecomeKey(_ notification: Notification) {
+        guard store.selectedSessionID == nil else { return }
+        NotificationCenter.default.post(name: .focusPromptField, object: nil)
+    }
+
+    public func windowDidResignKey(_ notification: Notification) {
+        guard !isHidingWindow, !isTestBuild else { return }
+
+        Task { @MainActor [weak self] in
+            guard let self, !NSApp.isActive else { return }
+            hideWindow()
+        }
     }
 }

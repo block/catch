@@ -87,6 +87,8 @@ cat >"$INFO_PLIST" <<PLIST
 </plist>
 PLIST
 
+/usr/bin/codesign --force --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE" >/dev/null
+
 echo "Creating sidecar tarball"
 mkdir -p "$EMBED_DIR"
 cp "$UNIVERSAL_BINARY" "$EMBED_DIR/catch"

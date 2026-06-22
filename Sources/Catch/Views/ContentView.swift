@@ -2,8 +2,6 @@ import AppKit
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject private var store: SessionStore
-    @FocusState private var promptFocused: Bool
     let isTestBuild: Bool
     let keyboardMonitorEnabled: Bool
 
@@ -23,52 +21,26 @@ struct ContentView: View {
                     .background(Color.orange)
             }
 
-            ComposerView(
-                prompt: $store.prompt,
-                isFocused: $promptFocused,
-                onMove: { direction in
-                    store.moveSelection(direction: direction)
-                },
-                onSubmit: {
-                    Task { await store.submitPrompt() }
-                }
-            )
+            SessionCreationConceptView(keyboardMonitorEnabled: keyboardMonitorEnabled)
+        }
+    }
+}
 
-            Divider()
+#Preview("Content") {
+    ContentPreviewHost(isTestBuild: false)
+}
 
-            SessionListView(sessions: store.sessions, selectedSessionID: $store.selectedSessionID)
-        }
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(.separator.opacity(0.35), lineWidth: 1)
-        }
-        .padding(1)
-        .onReceive(NotificationCenter.default.publisher(for: .focusPromptField)) { _ in
-            promptFocused = true
-        }
-        .onChange(of: promptFocused) { _, isFocused in
-            guard !isFocused else { return }
+#Preview("Content Test Build") {
+    ContentPreviewHost(isTestBuild: true)
+}
 
-            DispatchQueue.main.async {
-                promptFocused = true
-            }
-        }
-        .onAppear {
-            promptFocused = true
-        }
-        .background {
-            if keyboardMonitorEnabled {
-                KeyboardMonitor(
-                    onMove: { direction in
-                        store.moveSelection(direction: direction)
-                    },
-                    onEscape: {
-                        NSApp.hide(nil)
-                    }
-                )
-            }
-        }
+private struct ContentPreviewHost: View {
+    @StateObject private var store = SessionStore(appSupportDirectoryName: "CatchPreview")
+    let isTestBuild: Bool
+
+    var body: some View {
+        ContentView(isTestBuild: isTestBuild, keyboardMonitorEnabled: false)
+            .environmentObject(store)
+            .frame(width: 560, height: 430)
     }
 }

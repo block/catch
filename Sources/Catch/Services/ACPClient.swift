@@ -119,6 +119,7 @@ final class ACPClient: @unchecked Sendable {
         process.standardError = error
 
         var environment = ProcessInfo.processInfo.environment
+        environment.removeAppBundleIdentity()
         environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
         configuration.environment.forEach { key, value in
             environment[key] = value
@@ -444,5 +445,14 @@ final class ACPClient: @unchecked Sendable {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime]
         return formatter.date(from: value)
+    }
+}
+
+private extension Dictionary where Key == String, Value == String {
+    mutating func removeAppBundleIdentity() {
+        self["__CFBundleIdentifier"] = nil
+        self["XPC_FLAGS"] = nil
+        self["XPC_SERVICE_NAME"] = nil
+        self["LaunchInstanceID"] = nil
     }
 }

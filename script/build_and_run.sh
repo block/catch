@@ -75,6 +75,8 @@ $TEST_ENV_PLIST
 </plist>
 PLIST
 
+/usr/bin/codesign --force --sign - --identifier "$BUNDLE_ID" "$APP_BUNDLE" >/dev/null
+
 open_app() {
   if ((${#APP_ARGS[@]} > 0)); then
     /usr/bin/open -n "$APP_BUNDLE" --args "${APP_ARGS[@]}"

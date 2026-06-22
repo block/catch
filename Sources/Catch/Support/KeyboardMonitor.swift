@@ -2,11 +2,12 @@ import AppKit
 import SwiftUI
 
 struct KeyboardMonitor: NSViewRepresentable {
-    let onMove: (SelectionDirection) -> Void
+    let onMove: (SelectionDirection) -> Bool
+    var onAccept: () -> Bool = { false }
     let onEscape: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onMove: onMove, onEscape: onEscape)
+        Coordinator(onMove: onMove, onAccept: onAccept, onEscape: onEscape)
     }
 
     func makeNSView(context: Context) -> NSView {
@@ -15,19 +16,29 @@ struct KeyboardMonitor: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onMove = onMove
+        context.coordinator.onAccept = onAccept
+        context.coordinator.onEscape = onEscape
+    }
 
     static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
         coordinator.stop()
     }
 
     final class Coordinator {
-        private let onMove: (SelectionDirection) -> Void
-        private let onEscape: () -> Void
+        var onMove: (SelectionDirection) -> Bool
+        var onAccept: () -> Bool
+        var onEscape: () -> Void
         private var monitor: Any?
 
-        init(onMove: @escaping (SelectionDirection) -> Void, onEscape: @escaping () -> Void) {
+        init(
+            onMove: @escaping (SelectionDirection) -> Bool,
+            onAccept: @escaping () -> Bool,
+            onEscape: @escaping () -> Void
+        ) {
             self.onMove = onMove
+            self.onAccept = onAccept
             self.onEscape = onEscape
         }
 
@@ -42,11 +53,20 @@ struct KeyboardMonitor: NSViewRepresentable {
 
                 switch event.keyCode {
                 case 126:
-                    self?.onMove(.up)
-                    return nil
+                    if self?.onMove(.up) == true {
+                        return nil
+                    }
+                    return event
                 case 125:
-                    self?.onMove(.down)
-                    return nil
+                    if self?.onMove(.down) == true {
+                        return nil
+                    }
+                    return event
+                case 36, 48:
+                    if self?.onAccept() == true {
+                        return nil
+                    }
+                    return event
                 case 53:
                     self?.onEscape()
                     return nil
