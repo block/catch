@@ -19,7 +19,6 @@ public struct SessionCreationConceptView: View {
     @State private var gooseAgentCompletions: [MentionCompletion] = GooseBundledAgent.loadMentionCompletions()
     @State private var skillMentionCompletions: [MentionCompletion] = MentionCompletion.defaultSkillCompletions
     @State private var gooseProjects: [GooseProjectOption] = [.none]
-    @State private var fileMentionCompletions: [MentionCompletion] = []
     @State private var modelInventory: [String: [ConceptModel]] = [:]
     @State private var isPromptFocused = false
 
@@ -70,7 +69,6 @@ public struct SessionCreationConceptView: View {
         .padding(1)
         .onAppear {
             focusPrompt()
-            loadFileMentions()
             if store.isConnected {
                 loadCreationMetadata()
             }
@@ -88,9 +86,6 @@ public struct SessionCreationConceptView: View {
         .onChange(of: activeMentionKey) { _, _ in
             mentionSelectionIndex = 0
             suppressedMentionKey = nil
-        }
-        .onChange(of: project.cwd) { _, _ in
-            loadFileMentions()
         }
         .background {
             if keyboardMonitorEnabled {
@@ -174,8 +169,6 @@ private extension SessionCreationConceptView {
 private extension SessionCreationConceptView {
     var addMenu: some View {
         Menu {
-            Button { } label: { Label("Attach File", systemImage: "paperclip") }
-            Button { } label: { Label("Add Folder", systemImage: "folder") }
             Button { } label: { Label("Mention Agent", systemImage: "at") }
             Button { } label: { Label("Add Skill", systemImage: "sparkles") }
         } label: {
@@ -186,7 +179,7 @@ private extension SessionCreationConceptView {
         }
         .creationMenuStyle()
         .fixedSize()
-        .help("Additional inputs are not wired yet")
+        .help("Add agent or skill context")
     }
 
     var configurationMenu: some View {
@@ -392,8 +385,7 @@ private extension SessionCreationConceptView {
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let groupedCompletions = [
             gooseAgentCompletions,
-            skillMentionCompletions,
-            fileMentionCompletions
+            skillMentionCompletions
         ]
         let completions = groupedCompletions.flatMap { $0 }
 
@@ -512,18 +504,6 @@ private extension SessionCreationConceptView {
         isPromptFocused = true
     }
 
-    func loadFileMentions() {
-        let cwd = project.cwd
-
-        Task.detached(priority: .utility) {
-            let completions = MentionCompletion.loadFileCompletions(cwd: cwd)
-            await MainActor.run {
-                guard project.cwd == cwd else { return }
-                fileMentionCompletions = completions
-            }
-        }
-    }
-
     func loadCreationMetadata() {
         Task {
             do {
@@ -582,8 +562,6 @@ private extension SessionCreationConceptView {
         } else if !models(for: agent).contains(model) {
             model = models(for: agent)[0]
         }
-
-        loadFileMentions()
     }
 
     func selectedModels(from provider: GooseProviderEntry) -> [ConceptModel] {
@@ -697,7 +675,6 @@ private struct ActiveMention: Equatable {
 private enum MentionCompletionKind: Int, Comparable, Sendable {
     case agent
     case skill
-    case file
 
     static func < (lhs: MentionCompletionKind, rhs: MentionCompletionKind) -> Bool {
         lhs.rawValue < rhs.rawValue
@@ -707,7 +684,6 @@ private enum MentionCompletionKind: Int, Comparable, Sendable {
         switch self {
         case .agent: "Agent"
         case .skill: "Skill"
-        case .file: "File"
         }
     }
 
@@ -715,7 +691,6 @@ private enum MentionCompletionKind: Int, Comparable, Sendable {
         switch self {
         case .agent: "person.crop.circle.badge.plus"
         case .skill: "sparkles"
-        case .file: "doc.text"
         }
     }
 
@@ -723,7 +698,6 @@ private enum MentionCompletionKind: Int, Comparable, Sendable {
         switch self {
         case .agent: .teal
         case .skill: .purple
-        case .file: .blue
         }
     }
 }
@@ -792,65 +766,6 @@ private struct MentionCompletion: Identifiable, Comparable, Sendable {
             insertText: "@skill:\(token) ",
             searchText: "\(name) \(description) \(token)"
         )
-    }
-
-    static func loadFileCompletions(cwd: String) -> [MentionCompletion] {
-        let rootURL = URL(fileURLWithPath: cwd, isDirectory: true).standardizedFileURL
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: rootURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return []
-        }
-
-        let ignoredDirectories: Set<String> = [
-            ".build",
-            ".git",
-            ".swiftpm",
-            "DerivedData",
-            "dist",
-            "node_modules"
-        ]
-        let resourceKeys: [URLResourceKey] = [.isDirectoryKey, .isRegularFileKey]
-        guard let enumerator = FileManager.default.enumerator(
-            at: rootURL,
-            includingPropertiesForKeys: resourceKeys,
-            options: [.skipsHiddenFiles, .skipsPackageDescendants]
-        ) else {
-            return []
-        }
-
-        var completions: [MentionCompletion] = []
-        for case let fileURL as URL in enumerator {
-            let values = try? fileURL.resourceValues(forKeys: Set(resourceKeys))
-            if values?.isDirectory == true {
-                if ignoredDirectories.contains(fileURL.lastPathComponent) {
-                    enumerator.skipDescendants()
-                }
-                continue
-            }
-
-            guard values?.isRegularFile == true else { continue }
-
-            let relativePath = fileURL.path
-                .replacingOccurrences(of: rootURL.path + "/", with: "")
-            guard !relativePath.isEmpty else { continue }
-
-            completions.append(
-                MentionCompletion(
-                    id: "file:\(relativePath)",
-                    kind: .file,
-                    title: fileURL.lastPathComponent,
-                    subtitle: relativePath,
-                    insertText: "@file:\(relativePath) ",
-                    searchText: "\(fileURL.lastPathComponent) \(relativePath)"
-                )
-            )
-
-            if completions.count >= 600 {
-                break
-            }
-        }
-
-        return completions
     }
 }
 

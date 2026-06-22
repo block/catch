@@ -43,5 +43,8 @@ Catch behaves like a transient command panel. The window should feel ready for t
 
 - Catch must not intentionally request Apple Music, media-library, microphone, camera, screen-recording, contacts, calendar, reminders, location, or other privacy-scoped permissions during launch.
 - Catch must not import or link media frameworks such as MediaPlayer, MediaLibrary, MusicKit, or AVFoundation unless a user-facing feature explicitly requires it and the permission flow is designed first.
+- Catch must not eagerly crawl broad user directories such as the home directory, project folders, Music, Photos, Desktop, Documents, Downloads, or external volumes to populate launch-time UI.
+- If a feature needs access to files, folders, media libraries, protected locations, or any other privacy-scoped resource, access must be deferred until the user explicitly invokes that feature and the UI makes the reason for the permission clear.
+- `@` completions must not include filesystem files or folders unless that file-input feature is reintroduced behind an explicit user action and permission-aware flow.
 - Development and release app bundles must be signed with a stable bundle identifier so macOS does not treat each rebuild as a different privacy client.
 - Child ACP/server processes launched by Catch must not inherit Catch's app-bundle or XPC identity environment variables.
