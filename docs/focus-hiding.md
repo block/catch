@@ -15,6 +15,8 @@ Catch behaves like a transient command panel. The window should feel ready for t
 - Programmatic prompt-focus requests must not call `NSApp.activate` or otherwise steal focus from another app.
 - Prompt-focus requests are only allowed to focus the text view when Catch is already active, the panel is visible, and the panel is key.
 - Clicking or activating another app must never cause Catch to reactivate itself.
+- Standard macOS text-editing commands must work in the prompt through the normal Edit-menu responder chain, including undo, redo, cut, copy, paste, paste and match style, delete, and select all.
+- Prompt text-editing commands should be implemented as general AppKit responder actions rather than hardcoded keyboard shortcut checks.
 
 ## Session List Focus
 

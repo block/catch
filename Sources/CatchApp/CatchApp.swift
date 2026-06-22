@@ -59,14 +59,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // SwiftUI `Commands` do not reliably dispatch standard menu actions for this
-    // accessory, Settings-scene-only app. Install a small AppKit menu so system
-    // Hide and Close Window actions route through the same hide path as Escape.
+    // accessory, Settings-scene-only app. Install a small AppKit menu so standard
+    // text-editing, Hide, and Close Window actions all route through AppKit's
+    // responder chain.
     private func installCommandMenu() {
         let mainMenu = NSMenu()
 
         let appMenuItem = NSMenuItem()
         mainMenu.addItem(appMenuItem)
         appMenuItem.submenu = makeAppMenu()
+
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        editMenuItem.submenu = makeEditMenu()
 
         let sessionMenuItem = NSMenuItem()
         mainMenu.addItem(sessionMenuItem)
@@ -95,6 +100,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return menu
     }
 
+    private func makeEditMenu() -> NSMenu {
+        let menu = NSMenu(title: "Edit")
+        menu.addItem(responderMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        menu.addItem(responderMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z", modifierMask: [.command, .shift]))
+        menu.addItem(.separator())
+        menu.addItem(responderMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        menu.addItem(responderMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        menu.addItem(responderMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        menu.addItem(responderMenuItem(
+            title: "Paste and Match Style",
+            action: #selector(NSTextView.pasteAsPlainText(_:)),
+            keyEquivalent: "v",
+            modifierMask: [.command, .option, .shift]
+        ))
+        menu.addItem(responderMenuItem(title: "Delete", action: #selector(NSText.delete(_:))))
+        menu.addItem(.separator())
+        menu.addItem(responderMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        return menu
+    }
+
     private func makeSessionMenu() -> NSMenu {
         let menu = NSMenu(title: "Session")
         menu.addItem(menuItem(title: "Refresh Sessions", action: #selector(refreshSessions(_:)), keyEquivalent: "r"))
@@ -118,6 +143,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
         item.keyEquivalentModifierMask = modifierMask
         item.target = target ?? self
+        return item
+    }
+
+    private func responderMenuItem(
+        title: String,
+        action: Selector,
+        keyEquivalent: String = "",
+        modifierMask: NSEvent.ModifierFlags = [.command]
+    ) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+        item.keyEquivalentModifierMask = modifierMask
+        item.target = nil
         return item
     }
 
