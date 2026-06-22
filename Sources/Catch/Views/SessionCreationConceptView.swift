@@ -5,6 +5,7 @@ private let promptFontSize: CGFloat = 19
 private let promptInputHorizontalInset: CGFloat = 16
 private let promptInputVerticalInset: CGFloat = 12
 private let promptInputTopOverflow: CGFloat = 6
+private let sessionActivitySpinnerSize: CGFloat = 13
 
 /// Session-first creation UI backed by Goose's `goose serve` ACP+ server.
 public struct SessionCreationConceptView: View {
@@ -1085,8 +1086,7 @@ private struct ConceptRecentRow: View {
             Spacer(minLength: 8)
 
             if session.status == .working {
-                ProgressView()
-                    .controlSize(.mini)
+                SessionActivitySpinner()
                     .frame(width: 28, alignment: .trailing)
             } else {
                 Text(AppFormatters.compactAge(for: session.updatedAt))
@@ -1105,6 +1105,36 @@ private struct ConceptRecentRow: View {
             }
         }
         .contentShape(Rectangle())
+    }
+}
+
+private struct SessionActivitySpinner: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let rotation = reduceMotion
+                ? Angle.zero
+                : Angle.degrees(
+                    (timeline.date.timeIntervalSinceReferenceDate * 360)
+                        .truncatingRemainder(dividingBy: 360)
+                )
+
+            ZStack {
+                Circle()
+                    .stroke(.secondary.opacity(0.18), lineWidth: 1.4)
+
+                Circle()
+                    .trim(from: 0.06, to: 0.34)
+                    .stroke(
+                        .secondary.opacity(0.82),
+                        style: StrokeStyle(lineWidth: 1.7, lineCap: .round)
+                    )
+                    .rotationEffect(rotation)
+            }
+            .frame(width: sessionActivitySpinnerSize, height: sessionActivitySpinnerSize)
+        }
+        .accessibilityLabel("Working")
     }
 }
 
@@ -1523,8 +1553,8 @@ private struct SessionCreationConceptPreviewHost: View {
                         cwd: "~/Development/catch",
                         title: "Square iOS Dependency Graph R...",
                         updatedAt: Date().addingTimeInterval(-240),
-                        status: .idle,
-                        lastEvent: "Idle"
+                        status: .working,
+                        lastEvent: "Working"
                     ),
                     CodexSession(
                         provider: .goose,
