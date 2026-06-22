@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 
+private let promptFontSize: CGFloat = 19
+
 /// Session-first creation UI backed by Goose's `goose serve` ACP+ server.
 public struct SessionCreationConceptView: View {
     @EnvironmentObject private var store: SessionStore
@@ -127,7 +129,7 @@ private extension SessionCreationConceptView {
         ZStack(alignment: .topLeading) {
             if store.prompt.isEmpty {
                 Text("Ask \(agent.title) to…")
-                    .font(.system(size: 24, weight: .regular))
+                    .font(.system(size: promptFontSize, weight: .regular))
                     .foregroundStyle(.tertiary)
                     .padding(.top, 8)
                     .padding(.leading, 5)
@@ -917,7 +919,7 @@ private struct PromptTextView: NSViewRepresentable {
         textView.isRichText = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
-        textView.font = NSFont.systemFont(ofSize: 24, weight: .regular)
+        textView.font = NSFont.systemFont(ofSize: promptFontSize, weight: .regular)
         textView.textColor = .labelColor
         textView.textContainerInset = NSSize(width: 0, height: 6)
         textView.textContainer?.lineFragmentPadding = 0
