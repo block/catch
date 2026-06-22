@@ -142,6 +142,7 @@ private extension SessionCreationConceptView {
                 text: $store.prompt,
                 selection: $promptSelection,
                 isFocused: $isPromptFocused,
+                onFocus: focusPrompt,
                 onSubmit: submit,
                 onMove: moveFromPrompt,
                 onAcceptCompletion: acceptSelectedMention
@@ -901,6 +902,7 @@ private struct PromptTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var selection: TextSelectionRange
     @Binding var isFocused: Bool
+    let onFocus: () -> Void
     let onSubmit: () -> Void
     let onMove: (SelectionDirection, PromptMoveContext) -> Bool
     let onAcceptCompletion: () -> Bool
@@ -937,6 +939,7 @@ private struct PromptTextView: NSViewRepresentable {
         textView.autoresizingMask = [.width]
         textView.delegate = context.coordinator
         textView.onSubmit = onSubmit
+        textView.onFocusIntent = context.coordinator.focusFromUserInteraction
         textView.onMove = onMove
         textView.onAcceptCompletion = onAcceptCompletion
         textView.string = text
@@ -955,6 +958,7 @@ private struct PromptTextView: NSViewRepresentable {
 
         guard let textView = scrollView.documentView as? PromptNSTextView else { return }
         textView.onSubmit = onSubmit
+        textView.onFocusIntent = context.coordinator.focusFromUserInteraction
         textView.onMove = onMove
         textView.onAcceptCompletion = onAcceptCompletion
 
@@ -967,13 +971,7 @@ private struct PromptTextView: NSViewRepresentable {
             textView.setSelectedRange(clampedSelection)
         }
 
-        DispatchQueue.main.async {
-            if context.coordinator.wantsFocus {
-                context.coordinator.focusTextView()
-            } else {
-                context.coordinator.resignTextViewFocus()
-            }
-        }
+        context.coordinator.synchronizeFocusState()
     }
 
     @MainActor
@@ -1018,7 +1016,15 @@ private struct PromptTextView: NSViewRepresentable {
             }
         }
 
-        func resignTextViewFocus() {
+        func synchronizeFocusState() {
+            if wantsFocus {
+                focusTextView()
+            } else {
+                resignTextViewFocus()
+            }
+        }
+
+        private func resignTextViewFocus() {
             guard let textView, let window = textView.window else { return }
 
             if window.firstResponder === textView {
@@ -1026,8 +1032,13 @@ private struct PromptTextView: NSViewRepresentable {
             }
         }
 
+        func focusFromUserInteraction() {
+            wantsFocus = true
+            parent.onFocus()
+        }
+
         func textDidBeginEditing(_ notification: Notification) {
-            parent.isFocused = true
+            focusFromUserInteraction()
         }
 
         func textDidChange(_ notification: Notification) {
@@ -1052,8 +1063,14 @@ private struct PromptMoveContext {
 
 private final class PromptNSTextView: NSTextView {
     var onSubmit: (() -> Void)?
+    var onFocusIntent: (() -> Void)?
     var onMove: ((SelectionDirection, PromptMoveContext) -> Bool)?
     var onAcceptCompletion: (() -> Bool)?
+
+    override func mouseDown(with event: NSEvent) {
+        onFocusIntent?()
+        super.mouseDown(with: event)
+    }
 
     override func keyDown(with event: NSEvent) {
         let activeModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])

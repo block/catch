@@ -23,6 +23,8 @@ Catch behaves like a transient command panel. The window should feel ready for t
 - Pressing Down in any other prompt line uses normal text-view line navigation.
 - Pressing Up from the first selected session clears session selection and returns focus to the end of the prompt.
 - The prompt caret and a highlighted session row must never be visible at the same time.
+- Clicking the prompt while a session row is highlighted must immediately clear the row highlight and keep the prompt focused.
+- Avoid delayed focus reconciliation paths where a stale row-selection state can briefly allow the prompt caret and row highlight to coexist, then later resign prompt focus.
 
 ## Hiding
 
