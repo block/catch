@@ -364,10 +364,15 @@ private extension SessionCreationConceptView {
                         )
                     }
                     .buttonStyle(.plain)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .opacity
+                    ))
                 }
             }
             .padding(.horizontal, 11)
             .padding(.vertical, 9)
+            .animation(.snappy(duration: 0.22), value: store.sessions.map(\.id))
         }
         .overlay {
             if store.sessions.isEmpty {

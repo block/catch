@@ -16,6 +16,7 @@ public final class SessionStore: ObservableObject {
     private let gooseClient = GooseServeClient()
     private var refreshTask: Task<Void, Never>?
     private var lastActivityBySessionID: [String: Date] = [:]
+    private var provisionalTitles = ProvisionalSessionTitles()
     private let workingStatusTimeout: TimeInterval = 60
 
     public init(appSupportDirectoryName: String = "Catch") {
@@ -83,17 +84,17 @@ public final class SessionStore: ObservableObject {
 
         do {
             let sessionID = try await gooseClient.createSession(configuration: configuration)
-            upsert(
-                CodexSession(
-                    provider: .goose,
-                    sessionID: sessionID,
-                    cwd: configuration.cwd,
-                    title: String(trimmedPrompt.prefix(80)),
-                    updatedAt: Date(),
-                    status: .working,
-                    lastEvent: "Prompt sent"
-                )
+            let newSession = CodexSession(
+                provider: .goose,
+                sessionID: sessionID,
+                cwd: configuration.cwd,
+                title: trimmedPrompt,
+                updatedAt: Date(),
+                status: .working,
+                lastEvent: "Prompt sent"
             )
+            provisionalTitles.record(trimmedPrompt, for: newSession.id)
+            upsert(newSession)
 
             try await gooseClient.sendPrompt(sessionID: sessionID, prompt: trimmedPrompt)
             mark(provider: .goose, sessionID: sessionID, status: .idle, event: "Idle")
@@ -143,6 +144,7 @@ public final class SessionStore: ObservableObject {
             var session = listedSession
             if let existing = byID[listedSession.id] {
                 session.lastEvent = existing.lastEvent
+                session.title = provisionalTitles.resolvedTitle(for: listedSession)
             }
 
             if isRecentlyActive(sessionID: listedSession.id, now: now) {

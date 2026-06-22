@@ -28,6 +28,13 @@ Catch behaves like a transient command panel. The window should feel ready for t
 - Clicking the prompt while a session row is highlighted must immediately clear the row highlight and keep the prompt focused.
 - Avoid delayed focus reconciliation paths where a stale row-selection state can briefly allow the prompt caret and row highlight to coexist, then later resign prompt focus.
 
+## Session Creation
+
+- Submitting a prompt inserts the new session at the top of the session list with an animated top-edge insertion.
+- The new session's initial title is the submitted prompt text.
+- The initial prompt title remains visible until ACP reports a real generated session title.
+- Generic placeholder titles such as "New chat" must not replace the submitted prompt title during the transition from prompt title to generated title.
+
 ## Hiding
 
 - Escape hides the panel when no completion menu is active.

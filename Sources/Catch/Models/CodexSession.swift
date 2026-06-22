@@ -78,3 +78,43 @@ struct SessionUpdateEvent: Equatable {
         "\(provider.rawValue):\(sessionID)"
     }
 }
+
+enum SessionTitleResolver {
+    static func title(listedTitle: String, provisionalTitle: String) -> String {
+        if isGenericPlaceholderTitle(listedTitle) {
+            return provisionalTitle
+        }
+
+        return listedTitle
+    }
+
+    static func isGenericPlaceholderTitle(_ title: String) -> Bool {
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalizedTitle.isEmpty || normalizedTitle == "new chat"
+    }
+}
+
+struct ProvisionalSessionTitles {
+    private var titlesBySessionID: [String: String] = [:]
+
+    mutating func record(_ title: String, for sessionID: String) {
+        titlesBySessionID[sessionID] = title
+    }
+
+    mutating func resolvedTitle(for listedSession: CodexSession) -> String {
+        guard let provisionalTitle = titlesBySessionID[listedSession.id] else {
+            return listedSession.title
+        }
+
+        let resolvedTitle = SessionTitleResolver.title(
+            listedTitle: listedSession.title,
+            provisionalTitle: provisionalTitle
+        )
+
+        if !SessionTitleResolver.isGenericPlaceholderTitle(listedSession.title) {
+            titlesBySessionID[listedSession.id] = nil
+        }
+
+        return resolvedTitle
+    }
+}
