@@ -151,8 +151,9 @@ private extension SessionCreationConceptView {
 
     var controlBar: some View {
         HStack(spacing: 8) {
-            HStack(spacing: 4) {
+            HStack(spacing: -2) {
                 addMenu
+                    .padding(.leading, -8)
                 configurationMenu
             }
 
@@ -161,6 +162,7 @@ private extension SessionCreationConceptView {
             connectionStatus
             projectMenu
             sendButton
+                .padding(.trailing, -4)
         }
     }
 }
