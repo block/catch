@@ -1072,6 +1072,16 @@ private final class PromptNSTextView: NSTextView {
         super.mouseDown(with: event)
     }
 
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // NSTextView handles command-key input before our panel sees it. Route
+        // key equivalents through the app menu so Close/Hide stay menu-driven.
+        if NSApp.mainMenu?.performKeyEquivalent(with: event) == true {
+            return true
+        }
+
+        return super.performKeyEquivalent(with: event)
+    }
+
     override func keyDown(with event: NSEvent) {
         let activeModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         if activeModifiers == .command, event.keyCode == 36 {

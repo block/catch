@@ -6,6 +6,12 @@ Honor checked-in project specs when making changes. When a change touches behavi
 
 If you intentionally change a spec requirement, explicitly call that out to the user instead of presenting it as an ordinary implementation detail.
 
+# Implementation Style
+
+Prefer idiomatic, modern SwiftUI for app structure, state, focus, commands, and UI behavior. Use modern observation patterns such as `Observable` where they fit the codebase.
+
+Drop to AppKit only when SwiftUI does not expose the needed macOS behavior cleanly. When doing so, call out why in chat, and leave a short code comment when the reason would not be obvious from the surrounding code.
+
 # macOS App Testing
 
 Default to the test build for agent-driven UI checks:

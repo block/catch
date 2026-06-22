@@ -30,6 +30,8 @@ Catch behaves like a transient command panel. The window should feel ready for t
 
 - Escape hides the panel when no completion menu is active.
 - Escape dismisses an active completion menu without hiding the panel.
+- The standard Hide app action and Close Window action hide the panel exactly like Escape when no completion menu is active.
+- Hide and Close Window behavior should be bound through standard app/window commands rather than lower-level keyboard-event checks for their shortcut keys.
 - Hiding orders out the panel directly; it must not call `NSApp.hide`.
 - Hiding must suppress any resign-key refocus path so the panel does not immediately reappear.
 - In production, deactivating Catch by clicking another app or switching apps hides the panel.
