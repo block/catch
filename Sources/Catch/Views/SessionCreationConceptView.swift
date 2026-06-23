@@ -23,6 +23,7 @@ public struct SessionCreationConceptView: View {
     @State private var gooseProjects: [GooseProjectOption] = [.none]
     @State private var gooseModels: [ConceptModel] = ConceptModel.fallbackGooseModels
     @State private var isPromptFocused = false
+    @State private var promptFocusRequest = 0
 
     let keyboardMonitorEnabled: Bool
 
@@ -143,6 +144,7 @@ private extension SessionCreationConceptView {
                 text: $store.prompt,
                 selection: $promptSelection,
                 isFocused: $isPromptFocused,
+                focusRequest: promptFocusRequest,
                 onFocus: focusPrompt,
                 onSubmit: submit,
                 onMove: moveFromPrompt,
@@ -198,11 +200,11 @@ private extension SessionCreationConceptView {
             otherModels: otherModels(),
             onSelectReasoning: { option in
                 reasoningEffort = option
-                isPromptFocused = true
+                focusPrompt()
             },
             onSelectModel: { option in
                 model = option
-                isPromptFocused = true
+                focusPrompt()
             }
         )
         .equatable()
@@ -213,7 +215,7 @@ private extension SessionCreationConceptView {
             ForEach(gooseProjects) { option in
                 Button {
                     project = option
-                    isPromptFocused = true
+                    focusPrompt()
                 } label: {
                     if project == option {
                         Label(option.title, systemImage: "checkmark")
@@ -269,7 +271,7 @@ private extension SessionCreationConceptView {
 
         Task {
             await store.submitPrompt(configuration: configuration)
-            isPromptFocused = true
+            focusPrompt()
         }
     }
 }
@@ -438,7 +440,12 @@ private extension SessionCreationConceptView {
 
     func focusPrompt() {
         store.selectedSessionID = nil
+        requestPromptFocus()
+    }
+
+    func requestPromptFocus() {
         isPromptFocused = true
+        promptFocusRequest &+= 1
     }
 
     func focusPromptAtEnd() {
@@ -484,7 +491,7 @@ private extension SessionCreationConceptView {
         promptSelection = TextSelectionRange(location: cursorLocation, length: 0)
         mentionSelectionIndex = 0
         suppressedMentionKey = nil
-        isPromptFocused = true
+        focusPrompt()
     }
 
     func loadCreationMetadata() {
@@ -786,6 +793,7 @@ private struct PromptTextView: NSViewRepresentable {
     @Binding var text: String
     @Binding var selection: TextSelectionRange
     @Binding var isFocused: Bool
+    let focusRequest: Int
     let onFocus: () -> Void
     let onSubmit: () -> Void
     let onMove: (SelectionDirection, PromptMoveContext) -> Bool
@@ -839,6 +847,8 @@ private struct PromptTextView: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.wantsFocus = isFocused
+        let focusRequestChanged = context.coordinator.handledFocusRequest != focusRequest
+        context.coordinator.handledFocusRequest = focusRequest
 
         guard let textView = scrollView.documentView as? PromptNSTextView else { return }
         textView.onSubmit = onSubmit
@@ -855,7 +865,7 @@ private struct PromptTextView: NSViewRepresentable {
             textView.setSelectedRange(clampedSelection)
         }
 
-        context.coordinator.synchronizeFocusState()
+        context.coordinator.synchronizeFocusState(deferFocus: focusRequestChanged)
     }
 
     @MainActor
@@ -863,10 +873,12 @@ private struct PromptTextView: NSViewRepresentable {
         var parent: PromptTextView
         weak var textView: PromptNSTextView?
         var wantsFocus = false
+        var handledFocusRequest: Int
         nonisolated(unsafe) private var focusObserver: NSObjectProtocol?
 
         init(parent: PromptTextView) {
             self.parent = parent
+            self.handledFocusRequest = parent.focusRequest
         }
 
         deinit {
@@ -900,9 +912,18 @@ private struct PromptTextView: NSViewRepresentable {
             }
         }
 
-        func synchronizeFocusState() {
+        func synchronizeFocusState(deferFocus: Bool = false) {
             if wantsFocus {
                 focusTextView()
+                if deferFocus {
+                    // Native menus can temporarily own first responder while
+                    // their selection binding updates. Reassert focus after the
+                    // current event so standard text commands target the prompt.
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.wantsFocus else { return }
+                        self.focusTextView()
+                    }
+                }
             } else {
                 resignTextViewFocus()
             }
