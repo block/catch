@@ -6,12 +6,18 @@ public final class FloatingWindowController: NSObject {
     private let panelSize = NSSize(width: 560, height: 430)
     private let store: SessionStore
     private let isTestBuild: Bool
+    private let testWindowMode: TestWindowMode
     private var panel: FloatingPanel?
     private var isHidingWindow = false
 
-    public init(store: SessionStore, isTestBuild: Bool = false) {
+    public init(
+        store: SessionStore,
+        isTestBuild: Bool = false,
+        testWindowMode: TestWindowMode = .automation
+    ) {
         self.store = store
         self.isTestBuild = isTestBuild
+        self.testWindowMode = testWindowMode
         super.init()
 
         NotificationCenter.default.addObserver(
@@ -51,7 +57,7 @@ public final class FloatingWindowController: NSObject {
         panel.orderFrontRegardless()
         NotificationCenter.default.post(name: .focusPromptField, object: nil)
 
-        if isTestBuild {
+        if usesAutomationTestWindowBehavior {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 panel.orderBack(nil)
             }
@@ -78,7 +84,7 @@ public final class FloatingWindowController: NSObject {
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.level = isTestBuild ? .normal : .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        panel.collectionBehavior = collectionBehavior
         panel.title = isTestBuild ? "Catch Test" : "Catch"
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
@@ -98,6 +104,20 @@ public final class FloatingWindowController: NSObject {
         )
 
         return panel
+    }
+
+    private var usesAutomationTestWindowBehavior: Bool {
+        isTestBuild && testWindowMode == .automation
+    }
+
+    private var collectionBehavior: NSWindow.CollectionBehavior {
+        if usesAutomationTestWindowBehavior {
+            // Agent-driven test windows should stay out of the developer's way:
+            // normal level, current Space only, and ordered behind other windows.
+            return [.fullScreenAuxiliary, .transient]
+        }
+
+        return [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
     }
 
     private func position(_ panel: NSPanel) {

@@ -9,6 +9,7 @@ private let sessionActivitySpinnerSize: CGFloat = 11
 
 /// Session-first creation UI backed by Goose's `goose serve` ACP+ server.
 public struct SessionCreationConceptView: View {
+    @Environment(\.openURL) private var openURL
     @EnvironmentObject private var store: SessionStore
     @State private var agent: ConceptAgent = .goose
     @State private var model: ConceptModel = ConceptAgent.goose.models[0]
@@ -95,8 +96,12 @@ public struct SessionCreationConceptView: View {
                         guard !isPromptFocused else { return false }
                         return moveSessionSelection(direction: direction)
                     },
-                    onAccept: {
-                        acceptSelectedMention()
+                    onAccept: { key in
+                        if acceptSelectedMention() {
+                            return true
+                        }
+                        guard key == .returnKey else { return false }
+                        return activateSelectedSession()
                     },
                     onEscape: {
                         if let activeMention {
@@ -359,7 +364,7 @@ private extension SessionCreationConceptView {
             VStack(spacing: 1) {
                 ForEach(store.sessions) { session in
                     Button {
-                        selectSession(session.id)
+                        activateSession(session)
                     } label: {
                         ConceptRecentRow(
                             session: session,
@@ -494,6 +499,19 @@ private extension SessionCreationConceptView {
         }
 
         accept(mentionCompletions[mentionSelectionIndex])
+        return true
+    }
+
+    func activateSelectedSession() -> Bool {
+        guard let session = store.selectedSession else { return false }
+        return activateSession(session)
+    }
+
+    @discardableResult
+    func activateSession(_ session: CodexSession) -> Bool {
+        guard let url = session.gooseInternalSessionURL else { return false }
+        openURL(url)
+        NotificationCenter.default.post(name: .hideFloatingWindow, object: nil)
         return true
     }
 

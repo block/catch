@@ -21,7 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let runtime = AppRuntime.current
     let store: SessionStore
     private var globalShortcutRegistrar: GlobalShortcutRegistrar?
-    private lazy var floatingWindowController = FloatingWindowController(store: store, isTestBuild: runtime.isTestBuild)
+    private lazy var floatingWindowController = FloatingWindowController(
+        store: store,
+        isTestBuild: runtime.isTestBuild,
+        testWindowMode: runtime.testWindowMode
+    )
 
     override init() {
         store = SessionStore(appSupportDirectoryName: AppRuntime.current.appSupportDirectoryName)
@@ -52,6 +56,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         globalShortcutRegistrar?.unregister()
         NotificationCenter.default.post(name: .appWillTerminateProcessClients, object: nil)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        showApp()
+        return false
     }
 
     func hideFloatingWindow() {

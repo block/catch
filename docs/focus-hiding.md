@@ -28,6 +28,13 @@ Catch behaves like a transient command panel. The window should feel ready for t
 - Clicking the prompt while a session row is highlighted must immediately clear the row highlight and keep the prompt focused.
 - Avoid delayed focus reconciliation paths where a stale row-selection state can briefly allow the prompt caret and row highlight to coexist, then later resign prompt focus.
 
+## Session Activation
+
+- Pressing Return while a session row is highlighted opens that session in Goose through `goose-internal://session/<session-id>`.
+- Clicking a session row opens the session immediately instead of only selecting the row.
+- Session IDs in Goose deep links must be percent-encoded as a single URL path segment.
+- Opening a session hides the Catch panel using the same direct order-out path as Escape.
+
 ## Session Creation
 
 - Submitting a prompt inserts the new session at the top of the session list with an animated top-edge insertion.

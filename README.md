@@ -27,6 +27,18 @@ To launch the app in embedded-host mode:
 
 Embedded mode currently uses the same UI behavior as standalone mode, but records the launch context for future host-aware behavior.
 
+To launch the separate test bundle for autonomous UI checks:
+
+```bash
+./script/build_and_run.sh --test
+```
+
+To launch the same separate test bundle for manual testing, without the agent-only order-back behavior:
+
+```bash
+./script/build_and_run.sh --test-manual
+```
+
 ## Verification And Debugging
 
 ### SwiftUI Previews

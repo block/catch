@@ -22,6 +22,10 @@ Default to the test build for agent-driven UI checks:
 
 The test build is intentionally close to the production floating panel, but uses a separate bundle/process name, separate app-support workspace for sessions created from test mode, no global shortcut registration, no auto-hide on defocus, a normal window level so it can sit behind the user's windows, and a visible `TEST BUILD` label.
 
+Use `./script/build_and_run.sh --test` for autonomous agent checks. That launch mode orders the test window behind other windows and keeps it in the current Space so it stays out of the developer's way.
+
+Use `./script/build_and_run.sh --test-manual` when handing the test build to the developer for manual testing. That keeps the separate `CatchTest` bundle/process/app-support identity, but skips the agent-only order-back behavior so the window is easy to find.
+
 For routine UI interaction, prefer non-invasive process/window-targeted automation over coordinate clicks:
 
 - Use Accessibility or targeted process events where possible.

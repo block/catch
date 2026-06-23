@@ -65,6 +65,21 @@ struct CodexSession: Identifiable, Equatable {
     var displayTitle: String {
         title.isEmpty ? "Untitled session" : title
     }
+
+    var gooseInternalSessionURL: URL? {
+        let trimmedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedSessionID.isEmpty,
+              let encodedSessionID = trimmedSessionID.addingPercentEncoding(withAllowedCharacters: .urlPathSegmentAllowed)
+        else {
+            return nil
+        }
+
+        return URL(string: "goose-internal://session/\(encodedSessionID)")
+    }
+}
+
+private extension CharacterSet {
+    static let urlPathSegmentAllowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 }
 
 struct SessionUpdateEvent: Equatable {

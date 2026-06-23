@@ -22,7 +22,7 @@ APP_ARGS=()
 
 cd "$ROOT_DIR"
 
-if [[ "$MODE" == "--test" || "$MODE" == "test" ]]; then
+if [[ "$MODE" == "--test" || "$MODE" == "test" || "$MODE" == "--test-manual" || "$MODE" == "test-manual" ]]; then
   APP_NAME="CatchTest"
   BUNDLE_ID="xyz.block.catch.test"
   APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -36,6 +36,10 @@ if [[ "$MODE" == "--test" || "$MODE" == "test" ]]; then
     <key>CATCH_TEST_BUILD</key>
     <string>1</string>
   </dict>'
+
+  if [[ "$MODE" == "--test-manual" || "$MODE" == "test-manual" ]]; then
+    APP_ARGS=(--manual-test-window)
+  fi
 fi
 
 if [[ "$MODE" == "--embedded" || "$MODE" == "embedded" ]]; then
@@ -86,7 +90,7 @@ open_app() {
 }
 
 case "$MODE" in
-  run|--test|test|--embedded|embedded)
+  run|--test|test|--test-manual|test-manual|--embedded|embedded)
     open_app
     ;;
   --debug|debug)
@@ -106,7 +110,7 @@ case "$MODE" in
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [run|--test|--embedded|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--test|--test-manual|--embedded|--debug|--logs|--telemetry|--verify]" >&2
     exit 2
     ;;
 esac
