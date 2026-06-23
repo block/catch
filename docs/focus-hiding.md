@@ -27,6 +27,9 @@ Catch behaves like a command panel. The window should feel ready for typing when
 - Pressing Down in the prompt selects the first session only when the cursor is on the last visual line of prompt text.
 - Pressing Down in any other prompt line uses normal text-view line navigation.
 - Pressing Up from the first selected session clears session selection and returns focus to the end of the prompt.
+- When a session row is first highlighted, the recent-session scroll view must scroll by the minimum possible amount needed to bring that row fully into view.
+- Highlighting a row that is already fully visible must not change the scroll position.
+- Automatic scrolling to highlighted rows must not animate.
 - The prompt caret and a highlighted session row must never be visible at the same time.
 - Clicking the prompt while a session row is highlighted must immediately clear the row highlight and keep the prompt focused.
 - Avoid delayed focus reconciliation paths where a stale row-selection state can briefly allow the prompt caret and row highlight to coexist, then later resign prompt focus.

@@ -1087,11 +1087,63 @@ private struct ConceptRecentRow: View {
         .frame(height: 32)
         .background {
             if isSelected {
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.primary.opacity(0.10))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(Color.primary.opacity(0.10))
+                    SelectedRowScrollAnchor()
+                }
             }
         }
         .contentShape(Rectangle())
+    }
+}
+
+private struct SelectedRowScrollAnchor: NSViewRepresentable {
+    @MainActor
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    @MainActor
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: .zero)
+        scheduleScroll(for: view, coordinator: context.coordinator)
+        return view
+    }
+
+    @MainActor
+    func updateNSView(_ nsView: NSView, context: Context) {
+        scheduleScroll(for: nsView, coordinator: context.coordinator)
+    }
+
+    @MainActor
+    private func scheduleScroll(for view: NSView, coordinator: Coordinator, attempt: Int = 0) {
+        guard !coordinator.didRequestScroll else { return }
+
+        Task { @MainActor [weak view, weak coordinator] in
+            guard let view, let coordinator, !coordinator.didRequestScroll else { return }
+
+            guard view.window != nil, view.enclosingScrollView != nil else {
+                if attempt < 5 {
+                    scheduleScroll(for: view, coordinator: coordinator, attempt: attempt + 1)
+                }
+                return
+            }
+
+            coordinator.didRequestScroll = true
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0
+                context.allowsImplicitAnimation = false
+                // `scrollToVisible` performs the minimum scroll needed and is a
+                // no-op when the selected row is already fully visible.
+                view.scrollToVisible(view.bounds)
+            }
+        }
+    }
+
+    @MainActor
+    final class Coordinator: NSObject {
+        var didRequestScroll = false
     }
 }
 
