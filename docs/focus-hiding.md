@@ -1,12 +1,13 @@
 # Focus and Hiding Requirements
 
-Catch behaves like a transient command panel. The window should feel ready for typing when it is intentionally shown, but it must not fight the rest of macOS for focus.
+Catch behaves like a command panel. The window should feel ready for typing when it is intentionally shown, remain visible until explicitly dismissed, and avoid fighting the rest of macOS for focus.
 
 ## Showing
 
 - The production app registers Option-Space as the global shortcut.
 - Triggering the shortcut shows the Catch panel, activates Catch, makes the panel key, and focuses the prompt.
 - Showing the panel clears any session-row selection so the prompt and session list cannot both be focused.
+- The production panel remains above ordinary application windows while visible, including after Catch deactivates.
 - The test build does not register the global shortcut.
 
 ## Prompt Focus
@@ -15,6 +16,7 @@ Catch behaves like a transient command panel. The window should feel ready for t
 - Programmatic prompt-focus requests must not call `NSApp.activate` or otherwise steal focus from another app.
 - Prompt-focus requests are only allowed to focus the text view when Catch is already active, the panel is visible, and the panel is key.
 - Clicking or activating another app must never cause Catch to reactivate itself.
+- Clicking or activating another app must not hide Catch.
 - Standard macOS text-editing commands must work in the prompt through the normal Edit-menu responder chain, including undo, redo, cut, copy, paste, paste and match style, delete, and select all.
 - Prompt text-editing commands should be implemented as general AppKit responder actions rather than hardcoded keyboard shortcut checks.
 
@@ -44,14 +46,15 @@ Catch behaves like a transient command panel. The window should feel ready for t
 
 ## Hiding
 
+- Hiding is limited to explicit dismissal paths: Escape, the standard Hide app action, the standard Close Window action, opening an existing session, and quitting the app.
 - Escape hides the panel when no completion menu is active.
 - Escape dismisses an active completion menu without hiding the panel.
 - The standard Hide app action and Close Window action hide the panel exactly like Escape when no completion menu is active.
 - Hide and Close Window behavior should be bound through standard app/window commands rather than lower-level keyboard-event checks for their shortcut keys.
 - Hiding orders out the panel directly; it must not call `NSApp.hide`.
 - Hiding must suppress any resign-key refocus path so the panel does not immediately reappear.
-- In production, deactivating Catch by clicking another app or switching apps hides the panel.
-- The test build intentionally does not auto-hide on app deactivation so agents can inspect and interact with it without disrupting the user's desktop.
+- In production, deactivating Catch by clicking another app, clicking another Catch window, or switching apps must leave the panel visible.
+- The test build also does not auto-hide on app deactivation so agents can inspect and interact with it without disrupting the user's desktop.
 
 ## Permission Prompts
 
