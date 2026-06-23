@@ -583,9 +583,9 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         }
 
         let meta = (object["_meta"] as? [String: Any]).map(JSONObject.init)
-        if meta?["archivedAt"] != nil {
-            return nil
-        }
+        let isArchived = (meta?["archivedAt"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
 
         let title = object["title"] as? String
             ?? object["name"] as? String
@@ -610,7 +610,8 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
             title: title,
             updatedAt: updatedAt,
             status: .idle,
-            lastEvent: [providerID, modelID].compactMap { $0 }.joined(separator: " / ")
+            lastEvent: [providerID, modelID].compactMap { $0 }.joined(separator: " / "),
+            isArchived: isArchived
         )
     }
 

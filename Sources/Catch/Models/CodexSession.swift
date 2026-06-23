@@ -57,6 +57,7 @@ struct CodexSession: Identifiable, Equatable {
     var updatedAt: Date?
     var status: SessionStatus
     var lastEvent: String
+    var isArchived = false
 
     var id: String {
         "\(provider.rawValue):\(sessionID)"

@@ -15,6 +15,7 @@ public final class SessionStore: ObservableObject {
     private let workspaceURL: URL
     private let gooseClient = GooseServeClient()
     private var refreshTask: Task<Void, Never>?
+    private var cachedSessionsByID: [String: CodexSession] = [:]
     private var lastActivityBySessionID: [String: Date] = [:]
     private var provisionalTitles = ProvisionalSessionTitles()
     private let workingStatusTimeout: TimeInterval = 60
@@ -136,13 +137,13 @@ public final class SessionStore: ObservableObject {
         }
     }
 
-    private func mergeListedSessions(_ listed: [CodexSession]) {
+    func mergeListedSessions(_ listed: [CodexSession]) {
         let now = Date()
-        var byID = Dictionary(uniqueKeysWithValues: sessions.map { ($0.id, $0) })
+        var byID: [String: CodexSession] = [:]
 
         for listedSession in listed {
             var session = listedSession
-            if let existing = byID[listedSession.id] {
+            if let existing = cachedSessionsByID[listedSession.id] {
                 session.lastEvent = existing.lastEvent
                 session.title = provisionalTitles.resolvedTitle(for: listedSession)
             }
@@ -157,20 +158,13 @@ public final class SessionStore: ObservableObject {
             byID[listedSession.id] = session
         }
 
-        sessions = byID.values.sorted {
-            ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
-        }
+        cachedSessionsByID = byID
         expireStaleWorkingSessions(now: now)
-
-        pruneSelection()
+        publishVisibleSessions()
     }
 
     private func upsert(_ session: CodexSession) {
-        if let index = sessions.firstIndex(where: { $0.id == session.id }) {
-            sessions[index] = session
-        } else {
-            sessions.insert(session, at: 0)
-        }
+        cachedSessionsByID[session.id] = session
 
         if session.status == .working {
             lastActivityBySessionID[session.id] = Date()
@@ -178,7 +172,7 @@ public final class SessionStore: ObservableObject {
             lastActivityBySessionID[session.id] = nil
         }
 
-        pruneSelection()
+        publishVisibleSessions()
     }
 
     private func pruneSelection() {
@@ -188,29 +182,36 @@ public final class SessionStore: ObservableObject {
     }
 
     private func mark(provider: AgentProvider, sessionID: String, status: SessionStatus, event: String) {
-        guard let index = sessions.firstIndex(where: { $0.provider == provider && $0.sessionID == sessionID }) else { return }
-        sessions[index].status = status
-        sessions[index].lastEvent = event
-        sessions[index].updatedAt = Date()
+        let id = "\(provider.rawValue):\(sessionID)"
+        guard var session = cachedSessionsByID[id] else { return }
+        session.status = status
+        session.lastEvent = event
+        session.updatedAt = Date()
+        cachedSessionsByID[id] = session
 
-        if status == .working {
-            lastActivityBySessionID[sessions[index].id] = Date()
+        if session.status == .working {
+            lastActivityBySessionID[session.id] = Date()
         } else {
-            lastActivityBySessionID[sessions[index].id] = nil
+            lastActivityBySessionID[session.id] = nil
         }
+
+        publishVisibleSessions()
     }
 
     private func apply(_ event: SessionUpdateEvent) {
-        guard let index = sessions.firstIndex(where: { $0.id == event.id }) else { return }
-        sessions[index].status = event.status
-        sessions[index].lastEvent = event.summary
-        sessions[index].updatedAt = event.timestamp
+        guard var session = cachedSessionsByID[event.id] else { return }
+        session.status = event.status
+        session.lastEvent = event.summary
+        session.updatedAt = event.timestamp
+        cachedSessionsByID[event.id] = session
 
         if event.status == .working {
             lastActivityBySessionID[event.id] = event.timestamp
         } else {
             lastActivityBySessionID[event.id] = nil
         }
+
+        publishVisibleSessions()
     }
 
     private func isRecentlyActive(sessionID: String, now: Date) -> Bool {
@@ -222,14 +223,27 @@ public final class SessionStore: ObservableObject {
     }
 
     private func expireStaleWorkingSessions(now: Date) {
-        for index in sessions.indices where sessions[index].status == .working {
-            guard !isRecentlyActive(sessionID: sessions[index].id, now: now) else {
+        for id in cachedSessionsByID.keys {
+            guard cachedSessionsByID[id]?.status == .working else {
                 continue
             }
 
-            sessions[index].status = .idle
-            lastActivityBySessionID[sessions[index].id] = nil
+            guard !isRecentlyActive(sessionID: id, now: now) else {
+                continue
+            }
+
+            cachedSessionsByID[id]?.status = .idle
+            lastActivityBySessionID[id] = nil
         }
+    }
+
+    private func publishVisibleSessions() {
+        sessions = cachedSessionsByID.values
+            .filter { !$0.isArchived }
+            .sorted {
+                ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
+            }
+        pruneSelection()
     }
 }
 
