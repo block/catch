@@ -820,6 +820,9 @@ private struct PromptTextView: NSViewRepresentable {
         textView.isRichText = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
+        // Keep the AppKit undo manager active so standard Edit > Undo/Redo
+        // actions work through the responder chain like ordinary text fields.
+        textView.allowsUndo = true
         textView.font = NSFont.systemFont(ofSize: promptFontSize, weight: .regular)
         textView.textColor = .labelColor
         // Inset needed to avoid clipping caret and Voice Control glow.

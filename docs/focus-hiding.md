@@ -18,6 +18,7 @@ Catch behaves like a command panel. The window should feel ready for typing when
 - Clicking or activating another app must never cause Catch to reactivate itself.
 - Clicking or activating another app must not hide Catch.
 - Standard macOS text-editing commands must work in the prompt through the normal Edit-menu responder chain, including undo, redo, cut, copy, paste, paste and match style, delete, and select all.
+- Undo and redo must use the prompt text view's native undo manager so ordinary typing can be undone and redone with Command-Z and Shift-Command-Z.
 - Prompt text-editing commands should be implemented as general AppKit responder actions rather than hardcoded keyboard shortcut checks.
 
 ## Session List Focus
