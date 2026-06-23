@@ -6,13 +6,13 @@ private let promptInputHorizontalInset: CGFloat = 16
 private let promptInputVerticalInset: CGFloat = 12
 private let promptInputTopOverflow: CGFloat = 6
 private let sessionActivitySpinnerSize: CGFloat = 11
+private let gooseModelProviderID = "databricks_v2"
 
 /// Session-first creation UI backed by Goose's `goose serve` ACP+ server.
 public struct SessionCreationConceptView: View {
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var store: SessionStore
-    @State private var agent: ConceptAgent = .goose
-    @State private var model: ConceptModel = ConceptAgent.goose.models[0]
+    @State private var model: ConceptModel = ConceptModel.fallbackGooseModels[0]
     @State private var reasoningEffort: ReasoningEffort = .off
     @State private var project: GooseProjectOption = .none
     @State private var promptSelection = TextSelectionRange()
@@ -21,7 +21,7 @@ public struct SessionCreationConceptView: View {
     @State private var gooseAgentCompletions: [MentionCompletion] = GooseBundledAgent.loadMentionCompletions()
     @State private var skillMentionCompletions: [MentionCompletion] = MentionCompletion.defaultSkillCompletions
     @State private var gooseProjects: [GooseProjectOption] = [.none]
-    @State private var modelInventory: [String: [ConceptModel]] = [:]
+    @State private var gooseModels: [ConceptModel] = ConceptModel.fallbackGooseModels
     @State private var isPromptFocused = false
 
     let keyboardMonitorEnabled: Bool
@@ -132,7 +132,7 @@ private extension SessionCreationConceptView {
     var promptField: some View {
         ZStack(alignment: .topLeading) {
             if store.prompt.isEmpty {
-                Text("Ask \(agent.title) to…")
+                Text("Ask Goose to…")
                     .font(.system(size: promptFontSize, weight: .regular))
                     .foregroundStyle(.tertiary)
                     .padding(.top, promptInputVerticalInset - promptInputTopOverflow)
@@ -191,56 +191,21 @@ private extension SessionCreationConceptView {
     }
 
     var configurationMenu: some View {
-        Menu {
-            Section("Agent") {
-                ForEach(ConceptAgent.allCases) { option in
-                    Button {
-                        agent = option
-                        model = sortedModels(for: option)[0]
-                        isPromptFocused = true
-                    } label: {
-                        if agent == option {
-                            Label(option.title, systemImage: "checkmark")
-                        } else {
-                            Text(option.title)
-                        }
-                    }
-                }
+        ModelConfigurationMenu(
+            model: model,
+            reasoningEffort: reasoningEffort,
+            recommendedModels: recommendedModels(),
+            otherModels: otherModels(),
+            onSelectReasoning: { option in
+                reasoningEffort = option
+                isPromptFocused = true
+            },
+            onSelectModel: { option in
+                model = option
+                isPromptFocused = true
             }
-
-            Section("Model") {
-                ForEach(sortedModels(for: agent)) { option in
-                    Button {
-                        model = option
-                        isPromptFocused = true
-                    } label: {
-                        if model == option {
-                            Label(displayName(for: option), systemImage: "checkmark")
-                        } else {
-                            Text(displayName(for: option))
-                        }
-                    }
-                }
-            }
-
-            Section("Reasoning effort") {
-                ForEach(ReasoningEffort.allCases) { option in
-                    Button {
-                        reasoningEffort = option
-                        isPromptFocused = true
-                    } label: {
-                        if reasoningEffort == option {
-                            Label(option.title, systemImage: "checkmark")
-                        } else {
-                            Text(option.title)
-                        }
-                    }
-                }
-            }
-        } label: {
-            CreationMenuLabel(title: modelConfigurationTitle)
-        }
-        .creationMenuStyle()
+        )
+        .equatable()
     }
 
     var projectMenu: some View {
@@ -261,14 +226,6 @@ private extension SessionCreationConceptView {
             CreationMenuLabel(title: project.title)
         }
         .creationMenuStyle()
-    }
-
-    var modelConfigurationTitle: String {
-        if reasoningEffort == .off {
-            displayName(for: model)
-        } else {
-            "\(displayName(for: model)) \(reasoningEffort.shortTitle)"
-        }
     }
 
     var connectionStatus: some View {
@@ -303,7 +260,7 @@ private extension SessionCreationConceptView {
 
     func submit() {
         let configuration = GooseSessionConfiguration(
-            providerID: agent.providerID,
+            providerID: gooseModelProviderID,
             modelID: model.modelID,
             cwd: project.cwd,
             projectID: project.projectID,
@@ -536,8 +493,8 @@ private extension SessionCreationConceptView {
                 let metadata = try await store.loadSessionCreationMetadata()
                 apply(metadata)
             } catch {
-                if !models(for: agent).contains(model) {
-                    model = models(for: agent)[0]
+                if !models().contains(model) {
+                    model = models()[0]
                 }
             }
         }
@@ -574,68 +531,54 @@ private extension SessionCreationConceptView {
             skillMentionCompletions = acpSkills
         }
 
-        var grouped: [String: [ConceptModel]] = [:]
-        for provider in metadata.providers {
-            let models = selectedModels(from: provider)
-            if !models.isEmpty {
-                grouped[provider.providerID] = models
+        let supportedModels = selectedModels(from: metadata.supportedModels)
+        if !supportedModels.isEmpty {
+            if gooseModels != supportedModels {
+                gooseModels = supportedModels
+            }
+        } else if let provider = metadata.providers.first(where: { $0.providerID == gooseModelProviderID }) {
+            let providerModels = selectedModels(from: provider)
+            if !providerModels.isEmpty, gooseModels != providerModels {
+                gooseModels = providerModels
             }
         }
-        modelInventory = grouped
 
-        if agent == .goose, let defaults = metadata.defaults, let defaultModel = grouped[defaults.providerID]?.first(where: { $0.modelID == defaults.modelID }) {
-            model = defaultModel
-        } else if !models(for: agent).contains(model) {
-            model = models(for: agent)[0]
+        if let defaults = metadata.defaults,
+           defaults.providerID == gooseModelProviderID,
+           let defaultModel = gooseModels.first(where: { $0.modelID == defaults.modelID })
+        {
+            if model != defaultModel {
+                model = defaultModel
+            }
+        } else if !models().contains(model) {
+            model = models()[0]
         }
     }
 
     func selectedModels(from provider: GooseProviderEntry) -> [ConceptModel] {
-        let recommended = provider.models.filter(\.recommended)
-        let sourceModels = recommended.isEmpty ? provider.models : recommended
-        return sourceModels.map { model in
-            ConceptModel(model.name, modelID: model.id)
+        provider.models.map { model in
+            ConceptModel(model.name, modelID: model.id, isRecommended: model.recommended)
         }.deduplicatedByID()
     }
 
-    func models(for agent: ConceptAgent) -> [ConceptModel] {
-        let inventoryModels = agent.modelProviderIDs
-            .compactMap { modelInventory[$0] }
-            .flatMap { $0 }
-            .deduplicatedByID()
-
-        if inventoryModels.isEmpty {
-            return agent.models
-        }
-
-        if inventoryModels.contains(where: { $0.id == "default" }) {
-            return inventoryModels
-        }
-
-        guard agent.supportsDefaultModel else {
-            return inventoryModels
-        }
-
-        return ([ConceptModel("Default", modelID: nil)] + inventoryModels).deduplicatedByID()
+    func selectedModels(from supportedModels: [GooseSupportedModel]) -> [ConceptModel] {
+        ConceptModel.gooseModels(from: supportedModels.map(\.id))
     }
 
-    func sortedModels(for agent: ConceptAgent) -> [ConceptModel] {
-        models(for: agent).sorted {
-            displayName(for: $0, agent: agent).localizedStandardCompare(displayName(for: $1, agent: agent)) == .orderedAscending
-        }
+    func models() -> [ConceptModel] {
+        gooseModels.isEmpty ? ConceptModel.fallbackGooseModels : gooseModels
     }
 
-    func displayName(for model: ConceptModel, agent: ConceptAgent) -> String {
-        guard agent == .claudeCode else {
-            return model.name
-        }
-
-        return model.name.formattedClaudeCodeModelName
+    func recommendedModels() -> [ConceptModel] {
+        let recommended = models().filter(\.isRecommended)
+        return recommended.isEmpty ? models() : recommended
     }
 
-    func displayName(for model: ConceptModel) -> String {
-        displayName(for: model, agent: agent)
+    func otherModels() -> [ConceptModel] {
+        let recommendedIDs = Set(recommendedModels().map(\.id))
+        return models().filter { !recommendedIDs.contains($0.id) }
     }
+
 }
 
 private struct TextSelectionRange: Equatable {
@@ -1160,116 +1103,115 @@ private struct SessionActivitySpinner: View {
 
 // MARK: - UI domain
 
-private enum ConceptAgent: CaseIterable, Identifiable {
-    case goose
-    case claudeCode
-    case codex
-    case amp
-    case cursor
+struct ConceptModel: Identifiable, Equatable, Hashable, Sendable {
+    static let fallbackGooseModelIDs = [
+        "goose-claude-4-6-sonnet",
+        "goose-claude-4-7-opus",
+        "goose-claude-fable-5",
+        "goose-claude-haiku-4-5",
+        "goose-claude-opus-4-8",
+        "goose-gpt-5-4-mini",
+        "goose-gpt-5-5"
+    ]
+    static let fallbackGooseModels = gooseModels(from: fallbackGooseModelIDs)
 
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .goose: "Goose"
-        case .claudeCode: "Claude Code"
-        case .codex: "Codex"
-        case .amp: "Amp"
-        case .cursor: "Cursor Agent"
-        }
-    }
-
-    var providerID: String? {
-        switch self {
-        case .goose: nil
-        case .claudeCode: "claude-acp"
-        case .codex: "codex-acp"
-        case .amp: "amp-acp"
-        case .cursor: "cursor-agent"
-        }
-    }
-
-    var modelProviderIDs: [String] {
-        switch self {
-        case .goose:
-            ["databricks_v2"]
-        case .claudeCode:
-            ["claude-acp"]
-        case .codex:
-            ["codex-acp"]
-        case .amp:
-            ["amp-acp"]
-        case .cursor:
-            ["cursor-agent"]
-        }
-    }
-
-    var symbolName: String {
-        switch self {
-        case .goose: "bird"
-        case .claudeCode: "sparkle"
-        case .codex: "terminal"
-        case .amp: "bolt"
-        case .cursor: "cube"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .goose: .teal
-        case .claudeCode: .orange
-        case .codex: .indigo
-        case .amp: .red
-        case .cursor: .primary
-        }
-    }
-
-    var models: [ConceptModel] {
-        switch self {
-        case .goose:
-            [
-                ConceptModel("GPT-5.5", modelID: "goose-gpt-5-5"),
-                ConceptModel("Claude Sonnet 4.6", modelID: "goose-claude-4-6-sonnet"),
-                ConceptModel("Claude Opus 4.8", modelID: "goose-claude-opus-4-8")
-            ]
-        case .claudeCode:
-            [
-                ConceptModel("Claude Opus 4.6", modelID: "claude-opus-4-6[1m]"),
-                ConceptModel("Sonnet", modelID: "sonnet"),
-                ConceptModel("Haiku", modelID: "haiku"),
-                ConceptModel("Default", modelID: nil)
-            ]
-        case .codex:
-            [
-                ConceptModel("GPT-5.5", modelID: "gpt-5.5"),
-                ConceptModel("GPT-5.5 High", modelID: "gpt-5.5-high"),
-                ConceptModel("GPT-5.3 Codex", modelID: "gpt-5.3-codex")
-            ]
-        case .amp:
-            [
-                ConceptModel("Smart", modelID: "smart")
-            ]
-        case .cursor:
-            [
-                ConceptModel("Auto", modelID: "auto")
-            ]
-        }
-    }
-
-    var supportsDefaultModel: Bool {
-        self == .claudeCode
-    }
-}
-
-private struct ConceptModel: Identifiable, Equatable, Sendable {
     let id: String
     let name: String
     let modelID: String?
+    let isRecommended: Bool
 
-    init(_ name: String, modelID: String?) {
+    init(_ name: String, modelID: String?, isRecommended: Bool = false) {
         id = modelID == "default" ? "default" : (modelID ?? "default")
         self.name = name
         self.modelID = modelID
+        self.isRecommended = isRecommended
+    }
+
+    static func gooseModels(from ids: [String]) -> [ConceptModel] {
+        let parsedModels = ids.compactMap(ParsedGooseModel.init(id:))
+        let latestModelByFamily = Dictionary(grouping: parsedModels, by: \.familyKey)
+            .compactMapValues { models in
+                models.max { left, right in
+                    left.version.lexicographicallyPrecedes(right.version)
+                }?.id
+            }
+
+        return parsedModels
+            .map { parsed in
+                ConceptModel(
+                    parsed.displayName,
+                    modelID: parsed.id,
+                    isRecommended: latestModelByFamily[parsed.familyKey] == parsed.id
+                )
+            }
+            .deduplicatedByID()
+            .sorted { left, right in
+                let leftRank = ParsedGooseModel(id: left.id)?.sortRank ?? 4
+                let rightRank = ParsedGooseModel(id: right.id)?.sortRank ?? 4
+                if leftRank != rightRank {
+                    return leftRank < rightRank
+                }
+                return left.name.localizedStandardCompare(right.name) == .orderedAscending
+            }
+    }
+}
+
+struct ParsedGooseModel {
+    let id: String
+    let familyKey: String
+    let familyTokens: [String]
+    let version: [Int]
+
+    init?(id: String) {
+        guard id.hasPrefix("goose-") else { return nil }
+
+        var familyTokens: [String] = []
+        var version: [Int] = []
+        for token in id.dropFirst("goose-".count).split(separator: "-").map(String.init) {
+            if let numericToken = Int(token) {
+                version.append(numericToken)
+            } else {
+                familyTokens.append(token)
+            }
+        }
+
+        guard !familyTokens.isEmpty, !version.isEmpty else { return nil }
+
+        self.id = id
+        self.familyKey = familyTokens.joined(separator: "-")
+        self.familyTokens = familyTokens
+        self.version = version
+    }
+
+    var displayName: String {
+        let formattedFamilyTokens = familyTokens.map(Self.formatFamilyToken)
+        let versionString = version.map(String.init).joined(separator: ".")
+
+        if formattedFamilyTokens.first == "GPT" {
+            let suffix = formattedFamilyTokens.dropFirst().joined(separator: " ")
+            return suffix.isEmpty ? "GPT-\(versionString)" : "GPT-\(versionString) \(suffix.lowercased())"
+        }
+
+        return (formattedFamilyTokens + [versionString]).joined(separator: " ")
+    }
+
+    var sortRank: Int {
+        if familyKey == "gpt" { return 0 }
+        if familyKey.contains("opus") { return 1 }
+        if familyKey.contains("haiku") { return 3 }
+        return 2
+    }
+
+    private static func formatFamilyToken(_ token: String) -> String {
+        switch token.lowercased() {
+        case "gpt":
+            return "GPT"
+        case "chatgpt":
+            return "ChatGPT"
+        default:
+            guard let first = token.first else { return "" }
+            return String(first).uppercased() + token.dropFirst().lowercased()
+        }
     }
 }
 
@@ -1283,51 +1225,6 @@ private extension Array where Element == ConceptModel {
         }
 
         return unique
-    }
-}
-
-private extension String {
-    var formattedClaudeCodeModelName: String {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return self }
-
-        if trimmed.rangeOfCharacter(from: .uppercaseLetters) != nil {
-            return trimmed
-        }
-
-        let tokens = trimmed
-            .replacingOccurrences(of: "_", with: "-")
-            .split(separator: "-")
-            .map(String.init)
-
-        guard tokens.count > 1 else {
-            return trimmed.capitalizedModelToken
-        }
-
-        var formatted: [String] = []
-        var index = tokens.startIndex
-        while index < tokens.endIndex {
-            let token = tokens[index]
-            let nextIndex = tokens.index(after: index)
-
-            if token.allSatisfy(\.isNumber),
-               nextIndex < tokens.endIndex,
-               tokens[nextIndex].first?.isNumber == true
-            {
-                formatted.append("\(token).\(tokens[nextIndex])")
-                index = tokens.index(after: nextIndex)
-            } else {
-                formatted.append(token.capitalizedModelToken)
-                index = nextIndex
-            }
-        }
-
-        return formatted.joined(separator: " ")
-    }
-
-    private var capitalizedModelToken: String {
-        guard let first else { return self }
-        return String(first).uppercased() + dropFirst()
     }
 }
 
@@ -1490,6 +1387,96 @@ private extension Color {
         let green = Double((value >> 8) & 0xff) / 255
         let blue = Double(value & 0xff) / 255
         self.init(red: red, green: green, blue: blue)
+    }
+}
+
+private struct ModelConfigurationMenu: View, Equatable {
+    let model: ConceptModel
+    let reasoningEffort: ReasoningEffort
+    let recommendedModels: [ConceptModel]
+    let otherModels: [ConceptModel]
+    let onSelectReasoning: (ReasoningEffort) -> Void
+    let onSelectModel: (ConceptModel) -> Void
+
+    // Native macOS menus are sensitive to identity churn while submenus are
+    // presented. Ignore action closure identity so unrelated parent updates
+    // such as session refreshes do not rebuild the open menu.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.model == rhs.model
+            && lhs.reasoningEffort == rhs.reasoningEffort
+            && lhs.recommendedModels == rhs.recommendedModels
+            && lhs.otherModels == rhs.otherModels
+    }
+
+    var body: some View {
+        Menu {
+            Picker("Reasoning", selection: reasoningSelection) {
+                ForEach(ReasoningEffort.allCases) { option in
+                    Text(option.title)
+                        .tag(option)
+                }
+            }
+            .pickerStyle(.inline)
+
+            Section("Model") {
+                Menu {
+                    Picker(selection: modelSelection) {
+                        ForEach(recommendedModels) { option in
+                            Text(option.name)
+                                .tag(option)
+                        }
+                    } label: {
+                        EmptyView()
+                    }
+                    .pickerStyle(.inline)
+                    .labelsHidden()
+
+                    if !otherModels.isEmpty {
+                        Menu {
+                            Picker(selection: modelSelection) {
+                                ForEach(otherModels) { option in
+                                    Text(option.name)
+                                        .tag(option)
+                                }
+                            } label: {
+                                EmptyView()
+                            }
+                            .pickerStyle(.inline)
+                            .labelsHidden()
+                        } label: {
+                            Text("Other…")
+                        }
+                    }
+                } label: {
+                    Text(model.name)
+                }
+            }
+        } label: {
+            CreationMenuLabel(title: modelConfigurationTitle)
+        }
+        .creationMenuStyle()
+    }
+
+    private var modelConfigurationTitle: String {
+        if reasoningEffort == .off {
+            model.name
+        } else {
+            "\(model.name) \(reasoningEffort.shortTitle)"
+        }
+    }
+
+    private var reasoningSelection: Binding<ReasoningEffort> {
+        Binding(
+            get: { reasoningEffort },
+            set: { onSelectReasoning($0) }
+        )
+    }
+
+    private var modelSelection: Binding<ConceptModel> {
+        Binding(
+            get: { model },
+            set: { onSelectModel($0) }
+        )
     }
 }
 

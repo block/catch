@@ -34,6 +34,7 @@ struct GooseSessionConfiguration: Equatable {
 struct GooseSessionCreationMetadata: Sendable {
     var sources: [GooseSourceEntry]
     var providers: [GooseProviderEntry]
+    var supportedModels: [GooseSupportedModel]
     var defaults: GooseProviderDefaults?
 }
 
@@ -68,6 +69,10 @@ struct GooseProviderModel: Identifiable, Equatable, Sendable {
     let name: String
     let recommended: Bool
     let reasoning: Bool
+}
+
+struct GooseSupportedModel: Identifiable, Equatable, Sendable {
+    let id: String
 }
 
 final class GooseServeClient: NSObject, @unchecked Sendable {
@@ -185,12 +190,14 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
 
     func loadSessionCreationMetadata() async throws -> GooseSessionCreationMetadata {
         async let sources = listSources()
-        async let providers = listProviders()
+        async let providers = listProviders(providerIDs: ["databricks_v2"])
         async let defaults = readDefaults()
+        async let supportedModels = listSupportedModels(providerID: "databricks_v2")
 
         return try await GooseSessionCreationMetadata(
             sources: sources,
             providers: providers,
+            supportedModels: supportedModels,
             defaults: defaults
         )
     }
@@ -249,10 +256,16 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         return rawSources.compactMap(Self.decodeSource)
     }
 
-    private func listProviders() async throws -> [GooseProviderEntry] {
+    private func listProviders(providerIDs: [String]? = nil) async throws -> [GooseProviderEntry] {
+        let params: JSONObject = if let providerIDs {
+            ["providerIds": providerIDs]
+        } else {
+            [:]
+        }
+
         let response = try await request(
             method: "_goose/unstable/providers/list",
-            params: [:],
+            params: params,
             timeout: 30
         )
 
@@ -261,6 +274,22 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         }
 
         return rawEntries.compactMap(Self.decodeProvider)
+    }
+
+    private func listSupportedModels(providerID: String) async throws -> [GooseSupportedModel] {
+        let response = try await request(
+            method: "_goose/unstable/providers/supported-models/list",
+            params: [
+                "providerId": providerID
+            ],
+            timeout: 30
+        )
+
+        guard let rawModels = response["models"] as? [String] else {
+            throw GooseServeClientError.invalidResponse("_goose/unstable/providers/supported-models/list")
+        }
+
+        return rawModels.map(GooseSupportedModel.init(id:))
     }
 
     private func readDefaults() async throws -> GooseProviderDefaults? {
