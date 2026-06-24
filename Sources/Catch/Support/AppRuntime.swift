@@ -4,6 +4,7 @@ public struct AppRuntime: Sendable {
     public let isTestBuild: Bool
     public let testWindowMode: TestWindowMode
     public let isEmbedded: Bool
+    public let startsHidden: Bool
     public let globalShortcut: GlobalShortcut?
 
     public static let current = AppRuntime(
@@ -16,6 +17,7 @@ public struct AppRuntime: Sendable {
         self.isTestBuild = isTestBuild
         self.testWindowMode = testWindowMode
         isEmbedded = arguments.contains("--embedded")
+        startsHidden = arguments.contains("--start-hidden")
 
         if isTestBuild {
             globalShortcut = nil

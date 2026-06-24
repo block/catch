@@ -17,6 +17,19 @@ struct AppRuntimeTests {
 
         #expect(!runtime.registersGlobalShortcut)
         #expect(runtime.globalShortcut == nil)
+        #expect(!runtime.startsHidden)
+    }
+
+    @Test
+    func startHiddenArgumentStartsHidden() {
+        let runtime = AppRuntime(
+            isTestBuild: false,
+            testWindowMode: .automation,
+            arguments: ["Catch", "--embedded", "--global-hotkey", "alt+space", "--start-hidden"]
+        )
+
+        #expect(runtime.startsHidden)
+        #expect(runtime.globalShortcut == GlobalShortcut("alt+space"))
     }
 
     @Test

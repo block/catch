@@ -53,7 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await store.start()
         }
-        floatingWindowController.showWindow()
+        if !runtime.startsHidden {
+            floatingWindowController.showWindow()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -47,6 +47,9 @@ if [[ "$MODE" == "--embedded" || "$MODE" == "embedded" ]]; then
   if [[ -n "${CATCH_GLOBAL_HOTKEY:-}" ]]; then
     APP_ARGS+=(--global-hotkey "$CATCH_GLOBAL_HOTKEY")
   fi
+  if [[ "${CATCH_START_HIDDEN:-}" == "1" ]]; then
+    APP_ARGS+=(--start-hidden)
+  fi
 fi
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true

@@ -34,6 +34,8 @@ Embedded mode connects to a host-provided Goose ACP server. The host should prov
 
 Embedded hosts may also pass `--global-hotkey <shortcut>` to let Catch register a native macOS global shortcut. The run script accepts `CATCH_GLOBAL_HOTKEY` and forwards it as that launch argument.
 
+Embedded hosts may pass `--start-hidden` when restarting Catch after a configuration change. Catch will initialize normally but wait to show its panel until the global shortcut fires. The run script accepts `CATCH_START_HIDDEN=1` and forwards that launch argument in embedded mode.
+
 To launch the separate test bundle for autonomous UI checks:
 
 ```bash
@@ -91,6 +93,6 @@ The script builds a universal `arm64` + `x86_64` executable and writes two asset
 - `Catch-v0.1.0-macos-universal.dmg` for standalone installation
 - `catch-v0.1.0-macos-universal.tar.gz` for Tauri sidecar embedding
 
-Standalone users may need to allow the unsigned app in macOS Gatekeeper settings. Embedders should extract the tarball, verify the GitHub release asset digest, copy `catch` to the host app's expected sidecar filename, and launch it with `--embedded`, `GOOSE_SERVE_URL`, `GOOSE_SERVER__SECRET_KEY`, and optionally `--global-hotkey <shortcut>`.
+Standalone users may need to allow the unsigned app in macOS Gatekeeper settings. Embedders should extract the tarball, verify the GitHub release asset digest, copy `catch` to the host app's expected sidecar filename, and launch it with `--embedded`, `GOOSE_SERVE_URL`, `GOOSE_SERVER__SECRET_KEY`, optionally `--global-hotkey <shortcut>`, and optionally `--start-hidden` for configuration-change restarts.
 
 Publishing is automated by `.github/workflows/release.yml` for `v*` tags and manual workflow dispatch.
