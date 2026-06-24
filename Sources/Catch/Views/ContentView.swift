@@ -41,6 +41,10 @@ private struct ContentPreviewHost: View {
     var body: some View {
         ContentView(isTestBuild: isTestBuild, keyboardMonitorEnabled: false)
             .environmentObject(store)
-            .frame(width: 560, height: 430)
+            .frame(width: sessionCreationConceptWidth, height: sessionCreationConceptHeight)
+            .onAppear {
+                store.isConnected = true
+                store.sessions = CodexSession.previewSessions
+            }
     }
 }
