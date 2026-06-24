@@ -28,7 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
 
     override init() {
-        store = SessionStore(appSupportDirectoryName: AppRuntime.current.appSupportDirectoryName)
+        store = SessionStore(
+            appSupportDirectoryName: AppRuntime.current.appSupportDirectoryName,
+            runtime: AppRuntime.current
+        )
         super.init()
     }
 
@@ -39,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.installCommandMenu()
         }
 
-        if !runtime.isTestBuild {
+        if runtime.registersGlobalShortcut {
             let registrar = GlobalShortcutRegistrar { [weak self] in
                 self?.showApp()
             }

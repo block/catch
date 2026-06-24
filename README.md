@@ -24,10 +24,12 @@ The Codex app Run action is wired to the same script through `.codex/environment
 To launch the app in embedded-host mode:
 
 ```bash
-./script/build_and_run.sh --embedded
+GOOSE_SERVE_URL=ws://127.0.0.1:32845/acp \
+GOOSE_SERVER__SECRET_KEY=local-secret \
+  ./script/build_and_run.sh --embedded
 ```
 
-Embedded mode currently uses the same UI behavior as standalone mode, but records the launch context for future host-aware behavior.
+Embedded mode connects to a host-provided Goose ACP server and does not register Catch's global Option-Space shortcut. The host should provide `GOOSE_SERVE_URL` and `GOOSE_SERVER__SECRET_KEY`; if `GOOSE_SERVE_URL` already includes a `token` query item, the secret is optional.
 
 To launch the separate test bundle for autonomous UI checks:
 
@@ -86,6 +88,6 @@ The script builds a universal `arm64` + `x86_64` executable and writes two asset
 - `Catch-v0.1.0-macos-universal.dmg` for standalone installation
 - `catch-v0.1.0-macos-universal.tar.gz` for Tauri sidecar embedding
 
-Standalone users may need to allow the unsigned app in macOS Gatekeeper settings. Embedders should extract the tarball, verify the GitHub release asset digest, copy `catch` to the host app's expected sidecar filename, and launch it with `--embedded`.
+Standalone users may need to allow the unsigned app in macOS Gatekeeper settings. Embedders should extract the tarball, verify the GitHub release asset digest, copy `catch` to the host app's expected sidecar filename, and launch it with `--embedded`, `GOOSE_SERVE_URL`, and `GOOSE_SERVER__SECRET_KEY`.
 
 Publishing is automated by `.github/workflows/release.yml` for `v*` tags and manual workflow dispatch.

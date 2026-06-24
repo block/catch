@@ -4,7 +4,8 @@ Catch behaves like a command panel. The window should feel ready for typing when
 
 ## Showing
 
-- The production app registers Option-Space as the global shortcut.
+- The standalone production app registers Option-Space as the global shortcut.
+- Embedded production launches must not register Option-Space so a separately installed standalone Catch remains the owner of the global shortcut.
 - Triggering the shortcut shows the Catch panel, activates Catch, makes the panel key, and focuses the prompt.
 - Showing the panel clears any session-row selection so the prompt and session list cannot both be focused.
 - The production panel remains above ordinary application windows while visible, including after Catch deactivates.

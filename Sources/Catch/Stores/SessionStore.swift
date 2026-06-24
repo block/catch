@@ -13,14 +13,16 @@ public final class SessionStore: ObservableObject {
     @Published var errorMessage: String?
 
     private let workspaceURL: URL
-    private let gooseClient = GooseServeClient()
+    private let gooseClient: GooseServeClient
     private var refreshTask: Task<Void, Never>?
     private var cachedSessionsByID: [String: CodexSession] = [:]
     private var lastActivityBySessionID: [String: Date] = [:]
     private var provisionalTitles = ProvisionalSessionTitles()
     private let workingStatusTimeout: TimeInterval = 60
 
-    public init(appSupportDirectoryName: String = "Catch") {
+    public init(appSupportDirectoryName: String = "Catch", runtime: AppRuntime = .current) {
+        gooseClient = GooseServeClient(launchMode: runtime.isEmbedded ? .embedded : .standalone)
+
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         let url = base.appendingPathComponent("\(appSupportDirectoryName)/Workspace", isDirectory: true)

@@ -15,6 +15,10 @@ public struct AppRuntime: Sendable {
         isTestBuild ? "CatchTest" : "Catch"
     }
 
+    public var registersGlobalShortcut: Bool {
+        !isTestBuild && !isEmbedded
+    }
+
     public var appSupportDirectoryName: String {
         appName
     }

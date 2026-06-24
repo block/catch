@@ -1,8 +1,11 @@
 import Foundation
 
-enum GooseServeClientError: Error, LocalizedError {
+enum GooseServeClientError: Error, Equatable, LocalizedError {
     case executableNotFound([String])
     case connectionNotOpen
+    case embeddedServerURLMissing
+    case embeddedServerSecretMissing
+    case invalidEmbeddedServerURL(String)
     case invalidResponse(String)
     case rpcError(String)
     case timeout(String)
@@ -13,6 +16,12 @@ enum GooseServeClientError: Error, LocalizedError {
             return "Goose executable was not found. Checked: \(paths.joined(separator: ", "))."
         case .connectionNotOpen:
             return "Goose server connection is not open."
+        case .embeddedServerURLMissing:
+            return "Embedded Catch requires GOOSE_SERVE_URL."
+        case .embeddedServerSecretMissing:
+            return "Embedded Catch requires GOOSE_SERVER__SECRET_KEY when GOOSE_SERVE_URL does not include a token."
+        case .invalidEmbeddedServerURL(let value):
+            return "Embedded Catch could not parse GOOSE_SERVE_URL: \(value)."
         case .invalidResponse(let method):
             return "Invalid Goose response for \(method)."
         case .rpcError(let message):
@@ -78,14 +87,62 @@ struct GooseSupportedModel: Identifiable, Equatable, Sendable {
 final class GooseServeClient: NSObject, @unchecked Sendable {
     typealias UpdateHandler = (SessionUpdateEvent) -> Void
 
+    enum LaunchMode: Equatable, Sendable {
+        case standalone
+        case embedded
+    }
+
     private struct PendingRequest {
         let method: String
         let completion: (Result<JSONObject, Error>) -> Void
     }
 
+    struct EmbeddedServerConfiguration: Equatable {
+        static let serveURLEnvironmentKey = "GOOSE_SERVE_URL"
+        static let secretKeyEnvironmentKey = "GOOSE_SERVER__SECRET_KEY"
+
+        let webSocketURL: URL
+
+        init(environment: [String: String]) throws {
+            guard let rawURL = environment[Self.serveURLEnvironmentKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !rawURL.isEmpty
+            else {
+                throw GooseServeClientError.embeddedServerURLMissing
+            }
+
+            guard var components = URLComponents(string: rawURL),
+                  let scheme = components.scheme,
+                  scheme == "ws" || scheme == "wss",
+                  components.host != nil
+            else {
+                throw GooseServeClientError.invalidEmbeddedServerURL(rawURL)
+            }
+
+            let hasToken = components.queryItems?.contains { $0.name == "token" } == true
+            if !hasToken {
+                guard let secret = environment[Self.secretKeyEnvironmentKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !secret.isEmpty
+                else {
+                    throw GooseServeClientError.embeddedServerSecretMissing
+                }
+                var queryItems = components.queryItems ?? []
+                queryItems.append(URLQueryItem(name: "token", value: secret))
+                components.queryItems = queryItems
+            }
+
+            guard let webSocketURL = components.url else {
+                throw GooseServeClientError.invalidEmbeddedServerURL(rawURL)
+            }
+
+            self.webSocketURL = webSocketURL
+        }
+    }
+
     private let executablePaths: [String]
     private let host = "127.0.0.1"
     private let port: Int
+    private let launchMode: LaunchMode
+    private let environment: [String: String]
     private let queue = DispatchQueue(label: "Catch.GooseServeClient")
     private let process = Process()
     private let stderr = Pipe()
@@ -96,15 +153,26 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
     private var updateHandler: UpdateHandler?
     private var isOpen = false
 
-    init(port: Int = 32845, executablePaths: [String]? = nil) {
+    init(
+        port: Int = 32845,
+        executablePaths: [String]? = nil,
+        launchMode: LaunchMode = .standalone,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) {
         self.port = port
+        self.launchMode = launchMode
+        self.environment = environment
         self.executablePaths = executablePaths ?? GooseServeClient.defaultExecutablePaths()
         super.init()
     }
 
     func start(onUpdate: @escaping UpdateHandler) async throws {
         updateHandler = onUpdate
-        try startServer()
+        if launchMode == .standalone {
+            try startServer()
+        } else {
+            _ = try webSocketURL()
+        }
         try await connectWithRetry()
     }
 
@@ -334,7 +402,7 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         let delegate = WebSocketDelegate()
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         self.session = session
-        let task = session.webSocketTask(with: URL(string: "ws://\(host):\(port)/acp")!)
+        let task = session.webSocketTask(with: try webSocketURL())
         webSocketTask = task
 
         task.resume()
@@ -345,6 +413,15 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         }
 
         receiveLoop()
+    }
+
+    private func webSocketURL() throws -> URL {
+        switch launchMode {
+        case .standalone:
+            return URL(string: "ws://\(host):\(port)/acp")!
+        case .embedded:
+            return try EmbeddedServerConfiguration(environment: environment).webSocketURL
+        }
     }
 
     private func connectWithRetry() async throws {
