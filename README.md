@@ -2,7 +2,7 @@
 
 **catch** is a macOS shortcut for quickly finding and starting agent sessions in Goose, Codex, Claude Code.
 
-<img width="592" height="529" alt="Untitled" src="https://github.com/user-attachments/assets/6668f284-2f7e-4458-9861-e8fbdfd3e99a" />
+![Catch demo](docs/assets/catch-demo.gif)
 
 ## Build And Run
 
