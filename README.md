@@ -1,6 +1,8 @@
-# Catch
+# catch
 
-Catch is a SwiftPM macOS app for quickly finding and continuing local agent sessions from Codex, Claude Code, and Goose.
+**catch** is a macOS shortcut for quickly finding and starting agent sessions in Goose, Codex, Claude Code.
+
+<img width="592" height="529" alt="Untitled" src="https://github.com/user-attachments/assets/6668f284-2f7e-4458-9861-e8fbdfd3e99a" />
 
 ## Build And Run
 
@@ -44,6 +46,8 @@ To launch the same separate test bundle for manual testing, without the agent-on
 ### SwiftUI Previews
 
 Open the package in Xcode and select the `CatchKit` scheme before refreshing SwiftUI previews. `CatchKit` is exposed as a dynamic library product so previews can build through a framework scheme; using the `Catch` executable scheme can produce Xcode's `ENABLE_DEBUG_DYLIB` preview error.
+
+### Build and run
 
 ```bash
 ./script/build_and_run.sh --verify
