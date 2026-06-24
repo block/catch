@@ -44,6 +44,9 @@ fi
 
 if [[ "$MODE" == "--embedded" || "$MODE" == "embedded" ]]; then
   APP_ARGS=(--embedded)
+  if [[ -n "${CATCH_GLOBAL_HOTKEY:-}" ]]; then
+    APP_ARGS+=(--global-hotkey "$CATCH_GLOBAL_HOTKEY")
+  fi
 fi
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true

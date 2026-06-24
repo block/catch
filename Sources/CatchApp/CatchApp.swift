@@ -42,8 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.installCommandMenu()
         }
 
-        if runtime.registersGlobalShortcut {
-            let registrar = GlobalShortcutRegistrar { [weak self] in
+        if let shortcut = runtime.globalShortcut {
+            let registrar = GlobalShortcutRegistrar(shortcut: shortcut) { [weak self] in
                 self?.showApp()
             }
             registrar.register()

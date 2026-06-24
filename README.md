@@ -26,10 +26,13 @@ To launch the app in embedded-host mode:
 ```bash
 GOOSE_SERVE_URL=ws://127.0.0.1:32845/acp \
 GOOSE_SERVER__SECRET_KEY=local-secret \
+CATCH_GLOBAL_HOTKEY=alt+space \
   ./script/build_and_run.sh --embedded
 ```
 
-Embedded mode connects to a host-provided Goose ACP server and does not register Catch's global Option-Space shortcut. The host should provide `GOOSE_SERVE_URL` and `GOOSE_SERVER__SECRET_KEY`; if `GOOSE_SERVE_URL` already includes a `token` query item, the secret is optional.
+Embedded mode connects to a host-provided Goose ACP server. The host should provide `GOOSE_SERVE_URL` and `GOOSE_SERVER__SECRET_KEY`; if `GOOSE_SERVE_URL` already includes a `token` query item, the secret is optional.
+
+Embedded hosts may also pass `--global-hotkey <shortcut>` to let Catch register a native macOS global shortcut. The run script accepts `CATCH_GLOBAL_HOTKEY` and forwards it as that launch argument.
 
 To launch the separate test bundle for autonomous UI checks:
 
@@ -88,6 +91,6 @@ The script builds a universal `arm64` + `x86_64` executable and writes two asset
 - `Catch-v0.1.0-macos-universal.dmg` for standalone installation
 - `catch-v0.1.0-macos-universal.tar.gz` for Tauri sidecar embedding
 
-Standalone users may need to allow the unsigned app in macOS Gatekeeper settings. Embedders should extract the tarball, verify the GitHub release asset digest, copy `catch` to the host app's expected sidecar filename, and launch it with `--embedded`, `GOOSE_SERVE_URL`, and `GOOSE_SERVER__SECRET_KEY`.
+Standalone users may need to allow the unsigned app in macOS Gatekeeper settings. Embedders should extract the tarball, verify the GitHub release asset digest, copy `catch` to the host app's expected sidecar filename, and launch it with `--embedded`, `GOOSE_SERVE_URL`, `GOOSE_SERVER__SECRET_KEY`, and optionally `--global-hotkey <shortcut>`.
 
 Publishing is automated by `.github/workflows/release.yml` for `v*` tags and manual workflow dispatch.
