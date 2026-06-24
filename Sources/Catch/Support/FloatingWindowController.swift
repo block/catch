@@ -8,6 +8,8 @@ public final class FloatingWindowController: NSObject {
     private let isTestBuild: Bool
     private let testWindowMode: TestWindowMode
     private var panel: FloatingPanel?
+    private var hasPositionedPanel = false
+    private var isHidingWindow = false
 
     public init(
         store: SessionStore,
@@ -25,6 +27,21 @@ public final class FloatingWindowController: NSObject {
             name: .hideFloatingWindow,
             object: nil,
         )
+
+        if !isTestBuild {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(appDidResignActive),
+                name: NSApplication.didResignActiveNotification,
+                object: nil,
+            )
+            NSWorkspace.shared.notificationCenter.addObserver(
+                self,
+                selector: #selector(workspaceDidActivateApplication),
+                name: NSWorkspace.didActivateApplicationNotification,
+                object: nil
+            )
+        }
     }
 
     public func showWindow() {
@@ -34,7 +51,7 @@ public final class FloatingWindowController: NSObject {
 
         guard let panel else { return }
 
-        position(panel)
+        positionForDisplayIfNeeded(panel)
         NSApp.unhide(nil)
         NSApp.activate(ignoringOtherApps: true)
         panel.makeKeyAndOrderFront(nil)
@@ -50,7 +67,11 @@ public final class FloatingWindowController: NSObject {
 
     func hideWindow() {
         guard let panel, panel.isVisible else { return }
+        isHidingWindow = true
         panel.orderOut(nil)
+        DispatchQueue.main.async { [weak self] in
+            self?.isHidingWindow = false
+        }
     }
 
     private func makePanel() -> FloatingPanel {
@@ -100,20 +121,43 @@ public final class FloatingWindowController: NSObject {
         return [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
     }
 
-    private func position(_ panel: NSPanel) {
-        guard let visibleFrame = NSScreen.main?.visibleFrame else {
-            panel.center()
+    private func positionForDisplayIfNeeded(_ panel: NSPanel) {
+        let visibleFrames = NSScreen.screens.map(\.visibleFrame)
+        guard !visibleFrames.isEmpty else {
+            if !hasPositionedPanel {
+                panel.center()
+                hasPositionedPanel = true
+            }
             return
         }
 
-        let targetX = visibleFrame.midX - (panelSize.width / 2)
-        let targetY = visibleFrame.maxY - panelSize.height - 96
-        let clampedX = max(visibleFrame.minX + 16, min(targetX, visibleFrame.maxX - panelSize.width - 16))
-        let clampedY = max(visibleFrame.minY + 16, targetY)
-        panel.setFrameOrigin(NSPoint(x: clampedX, y: clampedY))
+        // NSPanel preserves its frame across orderOut/orderFront. Keep that
+        // user-chosen frame unless the current display layout can no longer
+        // show the whole panel.
+        if hasPositionedPanel, WindowFramePlacement.isFrameFullyVisible(panel.frame, in: visibleFrames) {
+            return
+        }
+
+        let visibleFrame = NSScreen.main?.visibleFrame ?? visibleFrames[0]
+        panel.setFrameOrigin(WindowFramePlacement.defaultOrigin(in: visibleFrame, panelSize: panelSize))
+        hasPositionedPanel = true
     }
 
     @objc private func hideWindowFromNotification() {
+        hideWindow()
+    }
+
+    @objc private func appDidResignActive() {
+        hideWindow()
+    }
+
+    @objc private func workspaceDidActivateApplication(_ notification: Notification) {
+        guard let activatedApp = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              activatedApp.processIdentifier != ProcessInfo.processInfo.processIdentifier
+        else {
+            return
+        }
+
         hideWindow()
     }
 }
@@ -122,5 +166,30 @@ extension FloatingWindowController: NSWindowDelegate {
     public func windowDidBecomeKey(_ notification: Notification) {
         guard store.selectedSessionID == nil else { return }
         NotificationCenter.default.post(name: .focusPromptField, object: nil)
+    }
+
+    public func windowDidResignKey(_ notification: Notification) {
+        guard !isHidingWindow, !isTestBuild else { return }
+
+        Task { @MainActor [weak self] in
+            guard let self, let panel, panel.isVisible, !panel.isKeyWindow else { return }
+            hideWindow()
+        }
+    }
+}
+
+enum WindowFramePlacement {
+    static func isFrameFullyVisible(_ frame: NSRect, in visibleFrames: [NSRect]) -> Bool {
+        visibleFrames.contains { visibleFrame in
+            visibleFrame.contains(frame)
+        }
+    }
+
+    static func defaultOrigin(in visibleFrame: NSRect, panelSize: NSSize) -> NSPoint {
+        let targetX = visibleFrame.midX - (panelSize.width / 2)
+        let targetY = visibleFrame.maxY - panelSize.height - 96
+        let clampedX = max(visibleFrame.minX + 16, min(targetX, visibleFrame.maxX - panelSize.width - 16))
+        let clampedY = max(visibleFrame.minY + 16, targetY)
+        return NSPoint(x: clampedX, y: clampedY)
     }
 }

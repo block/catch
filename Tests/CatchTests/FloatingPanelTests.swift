@@ -6,6 +6,42 @@ import Testing
 @Suite
 struct FloatingPanelTests {
     @Test
+    func framePlacementPreservesFullyVisibleFrames() {
+        let visibleFrame = NSRect(x: 100, y: 100, width: 1200, height: 800)
+        let panelFrame = NSRect(x: 250, y: 300, width: 560, height: 430)
+
+        #expect(WindowFramePlacement.isFrameFullyVisible(panelFrame, in: [visibleFrame]))
+    }
+
+    @Test
+    func framePlacementRejectsPartiallyOffscreenFrames() {
+        let visibleFrame = NSRect(x: 100, y: 100, width: 1200, height: 800)
+        let panelFrame = NSRect(x: 80, y: 300, width: 560, height: 430)
+
+        #expect(!WindowFramePlacement.isFrameFullyVisible(panelFrame, in: [visibleFrame]))
+    }
+
+    @Test
+    func framePlacementRejectsFramesSpanningVisibleScreens() {
+        let leftScreen = NSRect(x: 0, y: 0, width: 1000, height: 800)
+        let rightScreen = NSRect(x: 1000, y: 0, width: 1000, height: 800)
+        let panelFrame = NSRect(x: 900, y: 200, width: 560, height: 430)
+
+        #expect(!WindowFramePlacement.isFrameFullyVisible(panelFrame, in: [leftScreen, rightScreen]))
+    }
+
+    @Test
+    func defaultPlacementIsClampedInsideVisibleFrame() {
+        let visibleFrame = NSRect(x: 100, y: 100, width: 500, height: 350)
+        let panelSize = NSSize(width: 560, height: 430)
+
+        let origin = WindowFramePlacement.defaultOrigin(in: visibleFrame, panelSize: panelSize)
+
+        #expect(origin.x == visibleFrame.minX + 16)
+        #expect(origin.y == visibleFrame.minY + 16)
+    }
+
+    @Test
     func keyEquivalentsRouteThroughAppMenu() throws {
         let target = MenuActionTarget()
         let menu = NSMenu()
