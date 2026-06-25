@@ -79,8 +79,11 @@ public final class SessionStore: ObservableObject {
     }
 
     func submitPrompt(configuration: GooseSessionConfiguration) async {
-        let trimmedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedPrompt.isEmpty, isConnected else { return }
+        let submittedPrompt = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let assistantPrompt = GooseServeClient.skillAssistantPrompt(skills: configuration.invokedSkills)
+        let hasPrompt = !submittedPrompt.isEmpty
+        let hasAssistantPrompt = assistantPrompt?.isEmpty == false
+        guard (hasPrompt || hasAssistantPrompt), isConnected else { return }
 
         prompt = ""
         errorMessage = nil
@@ -92,21 +95,38 @@ public final class SessionStore: ObservableObject {
                 provider: .goose,
                 sessionID: sessionID,
                 cwd: configuration.cwd,
-                title: trimmedPrompt,
+                title: submittedPrompt.isEmpty ? fallbackTitle(for: configuration) : submittedPrompt,
                 updatedAt: now,
                 lastMessageAt: now,
                 status: .working,
                 lastEvent: "Prompt sent"
             )
-            provisionalTitles.record(trimmedPrompt, for: newSession.id)
+            provisionalTitles.record(newSession.title, for: newSession.id)
             upsert(newSession)
 
-            try await gooseClient.sendPrompt(sessionID: sessionID, prompt: trimmedPrompt)
+            try await gooseClient.sendPrompt(
+                sessionID: sessionID,
+                prompt: submittedPrompt,
+                assistantPrompt: assistantPrompt
+            )
             mark(provider: .goose, sessionID: sessionID, status: .idle, event: "Idle")
             await refreshSessions()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func fallbackTitle(for configuration: GooseSessionConfiguration) -> String {
+        let skillNames = configuration.invokedSkills.map(\.displayName)
+        if !skillNames.isEmpty {
+            return "Use \(skillNames.joined(separator: ", "))"
+        }
+
+        if let invokedAgent = configuration.invokedAgent {
+            return invokedAgent.displayName
+        }
+
+        return "New Goose session"
     }
 
     func moveSelection(direction: SelectionDirection) {

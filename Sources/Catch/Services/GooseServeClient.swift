@@ -38,22 +38,40 @@ struct GooseSessionConfiguration: Equatable {
     var cwd: String
     var projectID: String?
     var reasoningEffort: String?
+    var invokedAgent: GooseInvokedAgent?
+    var invokedSkills: [GooseInvokedSkill] = []
+}
+
+struct GooseInvokedAgent: Equatable, Sendable {
+    let personaID: String
+    let displayName: String
+    let systemPrompt: String?
+}
+
+struct GooseInvokedSkill: Identifiable, Equatable, Sendable {
+    let id: String
+    let displayName: String
 }
 
 struct GooseSessionCreationMetadata: Sendable {
-    var sources: [GooseSourceEntry]
+    var projectSources: [GooseSourceEntry]
+    var agentSources: [GooseSourceEntry]
+    var skillSources: [GooseSourceEntry]
     var providers: [GooseProviderEntry]
     var supportedModels: [GooseSupportedModel]
     var defaults: GooseProviderDefaults?
 }
 
 struct GooseSourceEntry: Identifiable, Equatable, Sendable {
-    var id: String { "\(type):\(name)" }
+    var id: String { path ?? "\(type):\(name)" }
 
     let type: String
     let name: String
     let description: String
+    let content: String
     let path: String?
+    let global: Bool
+    let writable: Bool
     let title: String?
     let color: String?
 }
@@ -220,10 +238,7 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
     func createSession(configuration: GooseSessionConfiguration) async throws -> String {
         let newResponse = try await request(
             method: "session/new",
-            params: [
-                "cwd": configuration.cwd,
-                "mcpServers": []
-            ],
+            params: Self.newSessionParams(configuration: configuration),
             timeout: 60
         )
 
@@ -247,36 +262,46 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
             try await updateProject(sessionID: sessionID, projectID: projectID)
         }
 
+        if let systemPrompt = configuration.invokedAgent?.systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !systemPrompt.isEmpty
+        {
+            try await appendSessionSystemPrompt(
+                sessionID: sessionID,
+                key: "client_system_prompt",
+                text: systemPrompt
+            )
+        }
+
         return sessionID
     }
 
     func loadSessionCreationMetadata() async throws -> GooseSessionCreationMetadata {
-        async let sources = listSources()
+        async let projectSources = listSources(type: "project")
+        async let agentSources = listSources(type: "agent")
+        async let skillSources = listSkillSources()
         async let providers = listProviders(providerIDs: ["databricks_v2"])
         async let defaults = readDefaults()
         async let supportedModels = listSupportedModels(providerID: "databricks_v2")
 
         return try await GooseSessionCreationMetadata(
-            sources: sources,
+            projectSources: projectSources,
+            agentSources: agentSources,
+            skillSources: skillSources,
             providers: providers,
             supportedModels: supportedModels,
             defaults: defaults
         )
     }
 
-    func sendPrompt(sessionID: String, prompt: String) async throws {
+    func sendPrompt(sessionID: String, prompt: String, assistantPrompt: String? = nil) async throws {
         _ = try await request(
             method: "session/prompt",
-            params: [
-                "sessionId": sessionID,
-                "messageId": UUID().uuidString,
-                "prompt": [
-                    [
-                        "type": "text",
-                        "text": prompt
-                    ]
-                ]
-            ],
+            params: Self.promptParams(
+                sessionID: sessionID,
+                messageID: UUID().uuidString,
+                prompt: prompt,
+                assistantPrompt: assistantPrompt
+            ),
             timeout: 300
         )
     }
@@ -304,10 +329,100 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         )
     }
 
-    private func listSources() async throws -> [GooseSourceEntry] {
+    private func appendSessionSystemPrompt(sessionID: String, key: String, text: String) async throws {
+        _ = try await request(
+            method: "_goose/unstable/session/system-prompt/set",
+            params: Self.appendSystemPromptParams(sessionID: sessionID, key: key, text: text),
+            timeout: 30
+        )
+    }
+
+    static func newSessionParams(configuration: GooseSessionConfiguration) -> JSONObject {
+        var params: [String: Any] = [
+            "cwd": configuration.cwd,
+            "mcpServers": []
+        ]
+
+        var meta: [String: String] = [:]
+        if let providerID = configuration.providerID {
+            meta["provider"] = providerID
+        }
+        if let projectID = configuration.projectID {
+            meta["projectId"] = projectID
+        }
+        if let personaID = configuration.invokedAgent?.personaID {
+            meta["personaId"] = personaID
+        }
+        if !meta.isEmpty {
+            params["_meta"] = meta
+        }
+
+        return JSONObject(params)
+    }
+
+    static func appendSystemPromptParams(sessionID: String, key: String, text: String) -> JSONObject {
+        JSONObject([
+            "sessionId": sessionID,
+            "mode": "append",
+            "key": key,
+            "text": text
+        ])
+    }
+
+    static func promptParams(
+        sessionID: String,
+        messageID: String,
+        prompt: String,
+        assistantPrompt: String? = nil
+    ) -> JSONObject {
+        var content: [[String: Any]] = []
+        if let assistantText = assistantPrompt?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !assistantText.isEmpty
+        {
+            content.append([
+                "type": "text",
+                "text": assistantText,
+                "annotations": [
+                    "audience": ["assistant"]
+                ]
+            ])
+        }
+
+        content.append([
+            "type": "text",
+            "text": prompt.isEmpty ? " " : prompt
+        ])
+
+        return JSONObject([
+            "sessionId": sessionID,
+            "messageId": messageID,
+            "prompt": content
+        ])
+    }
+
+    static func skillAssistantPrompt(skills: [GooseInvokedSkill]) -> String? {
+        let skillNames = skills
+            .map { $0.displayName.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !skillNames.isEmpty else { return nil }
+        return "Use these skills for this request: \(skillNames.joined(separator: ", "))."
+    }
+
+    static func listSourcesParams(type: String? = nil, projectDir: String? = nil) -> JSONObject {
+        var params: [String: Any] = [:]
+        if let type {
+            params["type"] = type
+        }
+        if let projectDir {
+            params["projectDir"] = projectDir
+        }
+        return JSONObject(params)
+    }
+
+    private func listSources(type: String? = nil, projectDir: String? = nil) async throws -> [GooseSourceEntry] {
         let response = try await request(
             method: "_goose/unstable/sources/list",
-            params: [:],
+            params: Self.listSourcesParams(type: type, projectDir: projectDir),
             timeout: 30
         )
 
@@ -316,6 +431,12 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         }
 
         return rawSources.compactMap(Self.decodeSource)
+    }
+
+    private func listSkillSources() async throws -> [GooseSourceEntry] {
+        async let globalSkills = listSources(type: "skill")
+        async let builtinSkills = listSources(type: "builtinSkill")
+        return try await (globalSkills + builtinSkills).deduplicatedByID()
     }
 
     private func listProviders(providerIDs: [String]? = nil) async throws -> [GooseProviderEntry] {
@@ -591,7 +712,7 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         )
     }
 
-    private static func decodeSource(_ object: [String: Any]) -> GooseSourceEntry? {
+    static func decodeSource(_ object: [String: Any]) -> GooseSourceEntry? {
         guard let type = object["type"] as? String,
               let name = object["name"] as? String
         else {
@@ -603,7 +724,10 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
             type: type,
             name: name,
             description: object["description"] as? String ?? "",
+            content: object["content"] as? String ?? "",
             path: object["path"] as? String,
+            global: boolValue(object["global"]),
+            writable: boolValue(object["writable"]),
             title: properties?["title"] as? String,
             color: properties?["color"] as? String
         )
@@ -789,6 +913,19 @@ private extension Dictionary where Key == String, Value == String {
         self["XPC_FLAGS"] = nil
         self["XPC_SERVICE_NAME"] = nil
         self["LaunchInstanceID"] = nil
+    }
+}
+
+private extension Array where Element == GooseSourceEntry {
+    func deduplicatedByID() -> [GooseSourceEntry] {
+        var seen: Set<String> = []
+        var unique: [GooseSourceEntry] = []
+
+        for source in self where seen.insert(source.id).inserted {
+            unique.append(source)
+        }
+
+        return unique
     }
 }
 

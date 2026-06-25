@@ -21,8 +21,10 @@ public struct SessionCreationConceptView: View {
     @State private var promptSelection = TextSelectionRange()
     @State private var mentionSelectionIndex = 0
     @State private var suppressedMentionKey: String?
-    @State private var gooseAgentCompletions: [MentionCompletion] = GooseBundledAgent.loadMentionCompletions()
-    @State private var skillMentionCompletions: [MentionCompletion] = MentionCompletion.defaultSkillCompletions
+    @State private var gooseAgentCompletions: [MentionCompletion] = []
+    @State private var skillMentionCompletions: [MentionCompletion] = []
+    @State private var selectedAgent: ComposerSelection?
+    @State private var selectedSkills: [ComposerSelection] = []
     @State private var gooseProjects: [GooseProjectOption] = [.none]
     @State private var gooseModels: [ConceptModel] = ConceptModel.fallbackGooseModels
     @State private var isPromptFocused = false
@@ -34,12 +36,12 @@ public struct SessionCreationConceptView: View {
         self.keyboardMonitorEnabled = keyboardMonitorEnabled
     }
 
-    private var trimmedPrompt: String {
-        store.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+    private var canSubmit: Bool {
+        store.isConnected && (!store.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !selectedSkills.isEmpty)
     }
 
-    private var canSubmit: Bool {
-        !trimmedPrompt.isEmpty && store.isConnected
+    private var selectedComposables: [ComposerSelection] {
+        [selectedAgent].compactMap { $0 } + selectedSkills
     }
 
     private var activeMention: ActiveMention? {
@@ -124,13 +126,27 @@ public struct SessionCreationConceptView: View {
 
 private extension SessionCreationConceptView {
     var composer: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
+            if !selectedComposables.isEmpty {
+                selectionChips
+            }
             promptField
             controlBar
         }
         .padding(.horizontal, 22)
-        .padding(.top, 24)
+        .padding(.top, selectedComposables.isEmpty ? 24 : 16)
         .padding(.bottom, 18)
+    }
+
+    var selectionChips: some View {
+        FlowLayout(spacing: 8, lineSpacing: 8) {
+            ForEach(selectedComposables) { selection in
+                ComposerSelectionChip(selection: selection) {
+                    remove(selection)
+                }
+            }
+        }
+        .padding(.bottom, 2)
     }
 
     var promptField: some View {
@@ -183,8 +199,29 @@ private extension SessionCreationConceptView {
 private extension SessionCreationConceptView {
     var addMenu: some View {
         Menu {
-            Button { } label: { Label("Mention Agent", systemImage: "at") }
-            Button { } label: { Label("Add Skill", systemImage: "sparkles") }
+            if !gooseAgentCompletions.isEmpty {
+                Section("Agents") {
+                    ForEach(gooseAgentCompletions) { completion in
+                        Button {
+                            select(completion)
+                        } label: {
+                            Label(completion.title, systemImage: completion.kind.symbolName)
+                        }
+                    }
+                }
+            }
+
+            if !skillMentionCompletions.isEmpty {
+                Section("Skills") {
+                    ForEach(skillMentionCompletions) { completion in
+                        Button {
+                            select(completion)
+                        } label: {
+                            Label(completion.title, systemImage: completion.kind.symbolName)
+                        }
+                    }
+                }
+            }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 16, weight: .regular))
@@ -270,11 +307,15 @@ private extension SessionCreationConceptView {
             modelID: model.modelID,
             cwd: project.cwd,
             projectID: project.projectID,
-            reasoningEffort: reasoningEffort.acpValue
+            reasoningEffort: reasoningEffort.acpValue,
+            invokedAgent: selectedAgent?.agentInvocation,
+            invokedSkills: selectedSkills.compactMap(\.skillInvocation)
         )
 
         Task {
             await store.submitPrompt(configuration: configuration)
+            selectedAgent = nil
+            selectedSkills = []
             focusPrompt()
         }
     }
@@ -487,14 +528,39 @@ private extension SessionCreationConceptView {
         guard let displayedMention else { return }
 
         let text = store.prompt as NSString
-        let replacement = completion.insertText
-        let updated = text.replacingCharacters(in: displayedMention.range, with: replacement)
-        let cursorLocation = displayedMention.range.location + (replacement as NSString).length
+        let updated = text.replacingCharacters(in: displayedMention.range, with: "")
+            .replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
+        let cursorLocation = min(displayedMention.range.location, (updated as NSString).length)
 
         store.prompt = updated
         promptSelection = TextSelectionRange(location: cursorLocation, length: 0)
+        select(completion)
         mentionSelectionIndex = 0
         suppressedMentionKey = nil
+        focusPrompt()
+    }
+
+    func select(_ completion: MentionCompletion) {
+        switch completion.selection.kind {
+        case .agent:
+            selectedAgent = completion.selection
+        case .skill:
+            if !selectedSkills.contains(where: { $0.id == completion.selection.id }) {
+                selectedSkills.append(completion.selection)
+            }
+        }
+        focusPrompt()
+    }
+
+    func remove(_ selection: ComposerSelection) {
+        switch selection.kind {
+        case .agent:
+            if selectedAgent?.id == selection.id {
+                selectedAgent = nil
+            }
+        case .skill:
+            selectedSkills.removeAll { $0.id == selection.id }
+        }
         focusPrompt()
     }
 
@@ -512,8 +578,7 @@ private extension SessionCreationConceptView {
     }
 
     func apply(_ metadata: GooseSessionCreationMetadata) {
-        let projects = metadata.sources
-            .filter { $0.type == "project" }
+        let projects = metadata.projectSources
             .map(GooseProjectOption.init(source:))
             .sorted()
 
@@ -522,25 +587,20 @@ private extension SessionCreationConceptView {
             project = .none
         }
 
-        let acpAgents = metadata.sources
-            .filter { $0.type == "agent" }
+        let acpAgents = metadata.agentSources
             .map(MentionCompletion.init(agentSource:))
             .sorted()
-        if acpAgents.isEmpty {
-            gooseAgentCompletions = GooseBundledAgent.loadMentionCompletions()
-        } else {
-            gooseAgentCompletions = acpAgents
+        gooseAgentCompletions = acpAgents
+        if let selectedAgent, !acpAgents.contains(where: { $0.selection.id == selectedAgent.id }) {
+            self.selectedAgent = nil
         }
 
-        let acpSkills = metadata.sources
-            .filter { $0.type == "skill" }
+        let acpSkills = metadata.skillSources
             .map(MentionCompletion.init(skillSource:))
             .sorted()
-        if acpSkills.isEmpty {
-            skillMentionCompletions = MentionCompletion.defaultSkillCompletions
-        } else {
-            skillMentionCompletions = acpSkills
-        }
+        skillMentionCompletions = acpSkills
+        let availableSkillIDs = Set(acpSkills.map(\.selection.id))
+        selectedSkills.removeAll { !availableSkillIDs.contains($0.id) }
 
         let supportedModels = selectedModels(from: metadata.supportedModels)
         if !supportedModels.isEmpty {
@@ -669,8 +729,8 @@ private enum MentionCompletionKind: Int, Comparable, Sendable {
 
     var symbolName: String {
         switch self {
-        case .agent: "person.crop.circle.badge.plus"
-        case .skill: "sparkles"
+        case .agent: "person.crop.circle"
+        case .skill: "book"
         }
     }
 
@@ -682,21 +742,37 @@ private enum MentionCompletionKind: Int, Comparable, Sendable {
     }
 }
 
+private struct ComposerSelection: Identifiable, Equatable, Sendable {
+    let id: String
+    let kind: MentionCompletionKind
+    let title: String
+    let subtitle: String
+    let agentInvocation: GooseInvokedAgent?
+    let skillInvocation: GooseInvokedSkill?
+}
+
 private struct MentionCompletion: Identifiable, Comparable, Sendable {
     let id: String
     let kind: MentionCompletionKind
     let title: String
     let subtitle: String
-    let insertText: String
     let searchText: String
+    let selection: ComposerSelection
 
-    init(id: String, kind: MentionCompletionKind, title: String, subtitle: String, insertText: String, searchText: String) {
+    init(
+        id: String,
+        kind: MentionCompletionKind,
+        title: String,
+        subtitle: String,
+        searchText: String,
+        selection: ComposerSelection
+    ) {
         self.id = id
         self.kind = kind
         self.title = title
         self.subtitle = subtitle
-        self.insertText = insertText
         self.searchText = searchText
+        self.selection = selection
     }
 
     static func < (lhs: MentionCompletion, rhs: MentionCompletion) -> Bool {
@@ -708,43 +784,55 @@ private struct MentionCompletion: Identifiable, Comparable, Sendable {
 
     init(agentSource: GooseSourceEntry) {
         let displayTitle = agentSource.title ?? agentSource.name
+        let sourceID = agentSource.path ?? "agent:\(agentSource.name)"
+        let agentInvocation = agentSource.path.map { personaID in
+            GooseInvokedAgent(
+                personaID: personaID,
+                displayName: displayTitle,
+                systemPrompt: agentSource.content
+            )
+        }
+        let selection = ComposerSelection(
+            id: "agent:\(sourceID)",
+            kind: .agent,
+            title: displayTitle,
+            subtitle: agentSource.description,
+            agentInvocation: agentInvocation,
+            skillInvocation: nil
+        )
         self.init(
-            id: "agent:\(agentSource.name)",
+            id: selection.id,
             kind: .agent,
             title: displayTitle,
             subtitle: agentSource.description.isEmpty ? "Goose agent" : agentSource.description,
-            insertText: "@\(agentSource.name) ",
-            searchText: "\(displayTitle) \(agentSource.name) \(agentSource.description)"
+            searchText: "\(displayTitle) \(agentSource.name) \(agentSource.description)",
+            selection: selection
         )
     }
 
     init(skillSource: GooseSourceEntry) {
         let displayTitle = skillSource.title ?? skillSource.name
+        let sourceID = skillSource.path ?? "\(skillSource.type):\(skillSource.name)"
+        let skillInvocation = GooseInvokedSkill(
+            id: sourceID,
+            displayName: skillSource.name
+        )
+        let selection = ComposerSelection(
+            id: "skill:\(sourceID)",
+            kind: .skill,
+            title: displayTitle,
+            subtitle: skillSource.description,
+            agentInvocation: nil,
+            skillInvocation: skillInvocation
+        )
         self.init(
-            id: "skill:\(skillSource.name)",
+            id: selection.id,
             kind: .skill,
             title: displayTitle,
             subtitle: skillSource.description.isEmpty ? "Goose skill" : skillSource.description,
-            insertText: "@skill:\(skillSource.name) ",
             searchText: "\(displayTitle) \(skillSource.name) \(skillSource.description)"
-        )
-    }
-
-    static let defaultSkillCompletions: [MentionCompletion] = [
-        ("Plan", "Break work into concrete steps", "plan"),
-        ("Explore", "Research a codebase or project area", "explore"),
-        ("Code Review", "Review changes for bugs and risks", "code-review"),
-        ("Debug", "Investigate a failure or runtime issue", "debug"),
-        ("Docs", "Use documentation as context", "docs"),
-        ("Test", "Run or design verification", "test")
-    ].map { name, description, token in
-        MentionCompletion(
-            id: "skill:\(token)",
-            kind: .skill,
-            title: name,
-            subtitle: description,
-            insertText: "@skill:\(token) ",
-            searchText: "\(name) \(description) \(token)"
+                + " \(skillSource.type)",
+            selection: selection
         )
     }
 }
@@ -790,6 +878,143 @@ private struct MentionCompletionRow: View {
             }
         }
         .contentShape(Rectangle())
+    }
+}
+
+private struct ComposerSelectionChip: View {
+    let selection: ComposerSelection
+    let onRemove: () -> Void
+    @State private var isHovered = false
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Button(action: onRemove) {
+                ZStack {
+                    Image(systemName: selection.kind.symbolName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .opacity(isHovered ? 0 : 1)
+
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .medium))
+                        .opacity(isHovered ? 0.72 : 0)
+                }
+                .frame(width: 15, height: 15)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(chipForeground)
+            .help("Remove \(selection.title)")
+
+            Text(selection.title)
+                .font(.system(size: 13, weight: .regular))
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .foregroundStyle(chipForeground)
+        .padding(.leading, 9)
+        .padding(.trailing, 11)
+        .frame(height: 28)
+        .background(chipBackground, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .onHover { isHovered = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(selection.title)
+    }
+
+    private var chipBackground: Color {
+        switch selection.kind {
+        case .agent:
+            Color(red: 0.88, green: 0.92, blue: 1.00)
+        case .skill:
+            Color(red: 1.00, green: 0.94, blue: 0.78)
+        }
+    }
+
+    private var chipForeground: Color {
+        switch selection.kind {
+        case .agent:
+            Color(red: 0.16, green: 0.36, blue: 0.85)
+        case .skill:
+            Color(red: 0.48, green: 0.28, blue: 0.02)
+        }
+    }
+}
+
+private struct FlowLayout: Layout {
+    let spacing: CGFloat
+    let lineSpacing: CGFloat
+
+    func sizeThatFits(
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Void
+    ) -> CGSize {
+        let rows = rows(for: subviews, in: proposal.width)
+        let width = rows.reduce(CGFloat.zero) { max($0, $1.width) }
+        let height = rows.reduce(CGFloat.zero) { $0 + $1.height }
+            + CGFloat(max(0, rows.count - 1)) * lineSpacing
+        return CGSize(width: proposal.width ?? width, height: height)
+    }
+
+    func placeSubviews(
+        in bounds: CGRect,
+        proposal: ProposedViewSize,
+        subviews: Subviews,
+        cache: inout Void
+    ) {
+        var y = bounds.minY
+        for row in rows(for: subviews, in: bounds.width) {
+            var x = bounds.minX
+            for element in row.elements {
+                subviews[element.index].place(
+                    at: CGPoint(x: x, y: y),
+                    proposal: ProposedViewSize(element.size)
+                )
+                x += element.size.width + spacing
+            }
+            y += row.height + lineSpacing
+        }
+    }
+
+    private func rows(for subviews: Subviews, in proposedWidth: CGFloat?) -> [FlowRow] {
+        let maxWidth = proposedWidth ?? .greatestFiniteMagnitude
+        var rows: [FlowRow] = []
+        var current = FlowRow()
+
+        for index in subviews.indices {
+            let subview = subviews[index]
+            let size = subview.sizeThatFits(.unspecified)
+            let nextWidth = current.elements.isEmpty ? size.width : current.width + spacing + size.width
+            if !current.elements.isEmpty, nextWidth > maxWidth {
+                rows.append(current)
+                current = FlowRow()
+            }
+            current.append(FlowElement(index: index, size: size), spacing: spacing)
+        }
+
+        if !current.elements.isEmpty {
+            rows.append(current)
+        }
+        return rows
+    }
+}
+
+private struct FlowElement {
+    let index: Int
+    let size: CGSize
+}
+
+private struct FlowRow {
+    var elements: [FlowElement] = []
+    var width: CGFloat = 0
+    var height: CGFloat = 0
+
+    mutating func append(_ element: FlowElement, spacing: CGFloat) {
+        if !elements.isEmpty {
+            width += spacing
+        }
+        elements.append(element)
+        width += element.size.width
+        height = max(height, element.size.height)
     }
 }
 
@@ -1388,72 +1613,6 @@ private struct GooseProjectOption: Identifiable, Equatable, Comparable, Sendable
 
         return NSHomeDirectory()
     }
-}
-
-private struct GooseBundledAgent: Sendable {
-    let name: String
-    let description: String
-
-    static func loadMentionCompletions() -> [MentionCompletion] {
-        load().map { agent in
-            MentionCompletion(
-                id: "agent:\(agent.name)",
-                kind: .agent,
-                title: agent.name,
-                subtitle: agent.description.isEmpty ? "Goose agent" : agent.description,
-                insertText: "@\(agent.name) ",
-                searchText: "\(agent.name) \(agent.description)"
-            )
-        }.sorted()
-    }
-
-    private static func load() -> [GooseBundledAgent] {
-        let agentsDirectory = URL(fileURLWithPath: NSHomeDirectory())
-            .appendingPathComponent(".agents/agents", isDirectory: true)
-        let manifestURL = agentsDirectory.appendingPathComponent(".goose-internal-bundled-agents.json")
-
-        guard let data = try? Data(contentsOf: manifestURL),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let fileNames = object["seededFiles"] as? [String]
-        else {
-            return fallbackAgents
-        }
-
-        let agents = fileNames.compactMap { fileName -> GooseBundledAgent? in
-            let url = agentsDirectory.appendingPathComponent(fileName)
-            guard let content = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-            return parseAgent(content)
-        }
-
-        return agents.isEmpty ? fallbackAgents : agents
-    }
-
-    private static func parseAgent(_ content: String) -> GooseBundledAgent? {
-        guard content.hasPrefix("---"),
-              let endRange = content.range(of: "\n---", range: content.index(content.startIndex, offsetBy: 3)..<content.endIndex)
-        else {
-            return nil
-        }
-
-        let frontmatter = content[content.index(content.startIndex, offsetBy: 3)..<endRange.lowerBound]
-        var fields: [String: String] = [:]
-        for line in frontmatter.split(separator: "\n") {
-            guard let separator = line.firstIndex(of: ":") else { continue }
-            let key = line[..<separator].trimmingCharacters(in: .whitespacesAndNewlines)
-            let value = line[line.index(after: separator)...]
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .trimmingCharacters(in: CharacterSet(charactersIn: "'\""))
-            fields[key] = value
-        }
-
-        guard let name = fields["name"], !name.isEmpty else { return nil }
-        return GooseBundledAgent(name: name, description: fields["description"] ?? "")
-    }
-
-    private static let fallbackAgents: [GooseBundledAgent] = [
-        GooseBundledAgent(name: "Builderbot", description: "Focused coding partner for thoughtful, efficient implementation."),
-        GooseBundledAgent(name: "block.md", description: "Opinionated guide to Block's intelligence operating model.")
-    ]
 }
 
 private extension Color {
