@@ -293,14 +293,20 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         )
     }
 
-    func sendPrompt(sessionID: String, prompt: String, assistantPrompt: String? = nil) async throws {
+    func sendPrompt(
+        sessionID: String,
+        prompt: String,
+        assistantPrompt: String? = nil,
+        personaID: String? = nil
+    ) async throws {
         _ = try await request(
             method: "session/prompt",
             params: Self.promptParams(
                 sessionID: sessionID,
                 messageID: UUID().uuidString,
                 prompt: prompt,
-                assistantPrompt: assistantPrompt
+                assistantPrompt: assistantPrompt,
+                personaID: personaID
             ),
             timeout: 300
         )
@@ -373,7 +379,8 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         sessionID: String,
         messageID: String,
         prompt: String,
-        assistantPrompt: String? = nil
+        assistantPrompt: String? = nil,
+        personaID: String? = nil
     ) -> JSONObject {
         var content: [[String: Any]] = []
         if let assistantText = assistantPrompt?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -393,11 +400,21 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
             "text": prompt.isEmpty ? " " : prompt
         ])
 
-        return JSONObject([
+        var params: [String: Any] = [
             "sessionId": sessionID,
             "messageId": messageID,
             "prompt": content
-        ])
+        ]
+
+        if let personaID = personaID?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !personaID.isEmpty
+        {
+            params["_meta"] = [
+                "personaId": personaID
+            ]
+        }
+
+        return JSONObject(params)
     }
 
     static func skillAssistantPrompt(skills: [GooseInvokedSkill]) -> String? {

@@ -107,7 +107,8 @@ public final class SessionStore: ObservableObject {
             try await gooseClient.sendPrompt(
                 sessionID: sessionID,
                 prompt: submittedPrompt,
-                assistantPrompt: assistantPrompt
+                assistantPrompt: assistantPrompt,
+                personaID: configuration.invokedAgent?.personaID
             )
             mark(provider: .goose, sessionID: sessionID, status: .idle, event: "Idle")
             await refreshSessions()

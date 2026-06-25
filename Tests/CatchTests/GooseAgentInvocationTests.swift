@@ -61,11 +61,15 @@ struct GooseAgentInvocationTests {
             sessionID: "session-1",
             messageID: "message-1",
             prompt: "review this",
-            assistantPrompt: "Use these skills for this request: code-review."
+            assistantPrompt: "Use these skills for this request: code-review.",
+            personaID: "/Users/test/.agents/agents/reviewer.md"
         ).rawValue
 
         #expect(params["sessionId"] as? String == "session-1")
         #expect(params["messageId"] as? String == "message-1")
+        #expect(params["_meta"] as? [String: String] == [
+            "personaId": "/Users/test/.agents/agents/reviewer.md"
+        ])
         let prompt = try #require(params["prompt"] as? [[String: Any]])
         #expect(prompt.count == 2)
         #expect(prompt[0]["type"] as? String == "text")

@@ -199,27 +199,27 @@ private extension SessionCreationConceptView {
 private extension SessionCreationConceptView {
     var addMenu: some View {
         Menu {
-            if !gooseAgentCompletions.isEmpty {
-                Section("Agents") {
-                    ForEach(gooseAgentCompletions) { completion in
-                        Button {
-                            select(completion)
-                        } label: {
-                            Label(completion.title, systemImage: completion.kind.symbolName)
-                        }
-                    }
+            Button {
+                showCompletions(for: .agent)
+            } label: {
+                Label {
+                    Text("Agent")
+                } icon: {
+                    Text("@")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 16)
                 }
             }
 
-            if !skillMentionCompletions.isEmpty {
-                Section("Skills") {
-                    ForEach(skillMentionCompletions) { completion in
-                        Button {
-                            select(completion)
-                        } label: {
-                            Label(completion.title, systemImage: completion.kind.symbolName)
-                        }
-                    }
+            Button {
+                showCompletions(for: .skill)
+            } label: {
+                Label {
+                    Text("Skill")
+                } icon: {
+                    Text("/")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 16)
                 }
             }
         } label: {
@@ -355,7 +355,7 @@ private extension SessionCreationConceptView {
         }
         .overlay {
             if mentionCompletions.isEmpty {
-                Text("No @ matches")
+                Text("No \(displayedMention?.trigger.symbol ?? "") matches")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -399,17 +399,17 @@ private extension SessionCreationConceptView {
     }
 
     func completions(matching query: String) -> [MentionCompletion] {
+        guard let displayedMention else { return [] }
         let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let groupedCompletions = [
-            gooseAgentCompletions,
+        let completions: [MentionCompletion] = switch displayedMention.trigger {
+        case .agent:
+            gooseAgentCompletions
+        case .skill:
             skillMentionCompletions
-        ]
-        let completions = groupedCompletions.flatMap { $0 }
+        }
 
         if normalizedQuery.isEmpty {
-            return groupedCompletions.flatMap { group in
-                group.sorted().prefix(8)
-            }
+            return Array(completions.sorted().prefix(16))
         }
 
         let filtered = completions.filter { completion in
@@ -564,6 +564,26 @@ private extension SessionCreationConceptView {
         focusPrompt()
     }
 
+    func showCompletions(for trigger: MentionCompletionKind) {
+        if displayedMention?.trigger == trigger {
+            focusPrompt()
+            return
+        }
+
+        let text = store.prompt as NSString
+        let replacementRange = activeMention?.range ?? promptSelection.clamped(to: store.prompt)
+        let replacement = trigger.symbol
+        let updated = text.replacingCharacters(in: replacementRange, with: replacement)
+        store.prompt = updated
+        promptSelection = TextSelectionRange(
+            location: replacementRange.location + (replacement as NSString).length,
+            length: 0
+        )
+        mentionSelectionIndex = 0
+        suppressedMentionKey = nil
+        focusPrompt()
+    }
+
     func loadCreationMetadata() {
         Task {
             do {
@@ -681,9 +701,10 @@ private struct TextSelectionRange: Equatable {
 private struct ActiveMention: Equatable {
     let range: NSRange
     let query: String
+    let trigger: MentionCompletionKind
 
     var key: String {
-        "\(range.location):\(range.length):\(query)"
+        "\(trigger.rawValue):\(range.location):\(range.length):\(query)"
     }
 
     static func detect(in text: String, selection: TextSelectionRange) -> ActiveMention? {
@@ -693,12 +714,17 @@ private struct ActiveMention: Equatable {
         }
 
         let prefix = nsText.substring(to: selection.location) as NSString
-        let atRange = prefix.range(of: "@", options: .backwards)
-        guard atRange.location != NSNotFound else { return nil }
+        let triggerRanges: [(MentionCompletionKind, NSRange)] = [
+            (.agent, prefix.range(of: MentionCompletionKind.agent.symbol, options: .backwards)),
+            (.skill, prefix.range(of: MentionCompletionKind.skill.symbol, options: .backwards))
+        ].filter { $0.1.location != NSNotFound }
+        guard let (trigger, triggerRange) = triggerRanges.max(by: { $0.1.location < $1.1.location }) else {
+            return nil
+        }
 
         let queryRange = NSRange(
-            location: atRange.location + atRange.length,
-            length: selection.location - atRange.location - atRange.length
+            location: triggerRange.location + triggerRange.length,
+            length: selection.location - triggerRange.location - triggerRange.length
         )
         let query = nsText.substring(with: queryRange)
         guard query.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
@@ -706,8 +732,9 @@ private struct ActiveMention: Equatable {
         }
 
         return ActiveMention(
-            range: NSRange(location: atRange.location, length: selection.location - atRange.location),
-            query: query
+            range: NSRange(location: triggerRange.location, length: selection.location - triggerRange.location),
+            query: query,
+            trigger: trigger
         )
     }
 }
@@ -724,6 +751,13 @@ private enum MentionCompletionKind: Int, Comparable, Sendable {
         switch self {
         case .agent: "Agent"
         case .skill: "Skill"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .agent: "@"
+        case .skill: "/"
         }
     }
 
