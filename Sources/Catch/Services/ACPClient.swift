@@ -339,6 +339,7 @@ final class ACPClient: @unchecked Sendable {
         }
 
         let jsonUpdate = JSONObject(update)
+        let timestamp = Date()
 
         updateHandler?(
             SessionUpdateEvent(
@@ -346,7 +347,8 @@ final class ACPClient: @unchecked Sendable {
                 sessionID: sessionID,
                 status: Self.status(for: jsonUpdate),
                 summary: Self.summarize(jsonUpdate),
-                timestamp: Date()
+                timestamp: timestamp,
+                isMessageActivity: Self.isMessageActivity(jsonUpdate)
             )
         )
     }
@@ -395,6 +397,9 @@ final class ACPClient: @unchecked Sendable {
         let updatedAt = (object["updatedAt"] as? String).flatMap(Self.parseACPDate)
             ?? (object["lastModified"] as? String).flatMap(Self.parseACPDate)
             ?? (object["createdAt"] as? String).flatMap(Self.parseACPDate)
+        let meta = (object["_meta"] as? [String: Any]).map(JSONObject.init)
+        let lastMessageAt = (object["lastMessageAt"] as? String).flatMap(Self.parseACPDate)
+            ?? (meta?["lastMessageAt"] as? String).flatMap(Self.parseACPDate)
 
         return CodexSession(
             provider: configuration.provider,
@@ -402,9 +407,19 @@ final class ACPClient: @unchecked Sendable {
             cwd: cwd,
             title: title,
             updatedAt: updatedAt,
+            lastMessageAt: lastMessageAt,
             status: .idle,
             lastEvent: "Listed by \(configuration.displayName)"
         )
+    }
+
+    private static func isMessageActivity(_ update: JSONObject) -> Bool {
+        switch update["sessionUpdate"] as? String {
+        case "agent_message", "agent_message_chunk", "user_message", "user_message_chunk":
+            return true
+        default:
+            return false
+        }
     }
 
     private static func summarize(_ update: JSONObject) -> String {

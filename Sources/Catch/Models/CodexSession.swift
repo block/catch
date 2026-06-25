@@ -55,6 +55,7 @@ struct CodexSession: Identifiable, Equatable {
     var cwd: String
     var title: String
     var updatedAt: Date?
+    var lastMessageAt: Date? = nil
     var status: SessionStatus
     var lastEvent: String
     var isArchived = false
@@ -65,6 +66,26 @@ struct CodexSession: Identifiable, Equatable {
 
     var displayTitle: String {
         title.isEmpty ? "Untitled session" : title
+    }
+
+    var activityAt: Date? {
+        lastMessageAt ?? updatedAt
+    }
+
+    static func isMoreActive(_ lhs: CodexSession, than rhs: CodexSession) -> Bool {
+        switch (lhs.activityAt, rhs.activityAt) {
+        case (.some(let left), .some(let right)) where left != right:
+            return left > right
+        case (.some, .none):
+            return true
+        case (.none, .some):
+            return false
+        default:
+            if lhs.id != rhs.id {
+                return lhs.id > rhs.id
+            }
+            return (lhs.updatedAt ?? .distantPast) > (rhs.updatedAt ?? .distantPast)
+        }
     }
 
     var gooseInternalSessionURL: URL? {
@@ -89,6 +110,7 @@ struct SessionUpdateEvent: Equatable {
     let status: SessionStatus
     let summary: String
     let timestamp: Date
+    let isMessageActivity: Bool
 
     var id: String {
         "\(provider.rawValue):\(sessionID)"

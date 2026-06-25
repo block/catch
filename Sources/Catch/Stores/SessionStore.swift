@@ -87,12 +87,14 @@ public final class SessionStore: ObservableObject {
 
         do {
             let sessionID = try await gooseClient.createSession(configuration: configuration)
+            let now = Date()
             let newSession = CodexSession(
                 provider: .goose,
                 sessionID: sessionID,
                 cwd: configuration.cwd,
                 title: trimmedPrompt,
-                updatedAt: Date(),
+                updatedAt: now,
+                lastMessageAt: now,
                 status: .working,
                 lastEvent: "Prompt sent"
             )
@@ -148,6 +150,9 @@ public final class SessionStore: ObservableObject {
             if let existing = cachedSessionsByID[listedSession.id] {
                 session.lastEvent = existing.lastEvent
                 session.title = provisionalTitles.resolvedTitle(for: listedSession)
+                if session.lastMessageAt == nil {
+                    session.lastMessageAt = existing.lastMessageAt
+                }
             }
 
             if isRecentlyActive(sessionID: listedSession.id, now: now) {
@@ -205,6 +210,9 @@ public final class SessionStore: ObservableObject {
         session.status = event.status
         session.lastEvent = event.summary
         session.updatedAt = event.timestamp
+        if event.isMessageActivity {
+            session.lastMessageAt = event.timestamp
+        }
         cachedSessionsByID[event.id] = session
 
         if event.status == .working {
@@ -242,9 +250,7 @@ public final class SessionStore: ObservableObject {
     private func publishVisibleSessions() {
         sessions = cachedSessionsByID.values
             .filter { !$0.isArchived }
-            .sorted {
-                ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast)
-            }
+            .sorted(by: CodexSession.isMoreActive)
         pruneSelection()
     }
 }

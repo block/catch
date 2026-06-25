@@ -1080,7 +1080,7 @@ private struct ConceptRecentRow: View {
                 SessionActivitySpinner()
                     .frame(width: 28, alignment: .trailing)
             } else {
-                Text(AppFormatters.compactAge(for: session.updatedAt))
+                Text(AppFormatters.compactAge(for: session.activityAt))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
