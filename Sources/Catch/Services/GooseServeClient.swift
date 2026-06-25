@@ -386,7 +386,7 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         var environment = ProcessInfo.processInfo.environment
         environment.removeAppBundleIdentity()
         environment["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-        environment["GOOSE_SERVER__SECRET_KEY"] = environment["GOOSE_SERVER__SECRET_KEY"] ?? UUID().uuidString
+        environment["GOOSE_SERVER__SECRET_KEY"] = UUID().uuidString
         process.environment = environment
 
         try process.run()
