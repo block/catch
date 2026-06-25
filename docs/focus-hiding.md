@@ -11,7 +11,7 @@ Catch behaves like a transient command panel. The window should feel ready for t
 - Showing the panel clears any session-row selection so the prompt and session list cannot both be focused.
 - Showing a previously hidden panel preserves the exact window location from before it was hidden.
 - If the preserved panel frame is not fully contained within any currently visible screen, showing the panel snaps it back to the default launch position.
-- The automation test build does not register a global shortcut. The manual test build does not register a default global shortcut, but registers an explicitly configured `--global-hotkey <shortcut>` so manually testable instances can avoid conflicting with another running Catch instance.
+- The automation test build does not need a global shortcut. Manually testable test builds register an explicitly configured `--global-hotkey <shortcut>` so they can avoid conflicting with another running Catch instance.
 
 ## Prompt Focus
 
