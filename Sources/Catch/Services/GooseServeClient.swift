@@ -4,7 +4,7 @@ enum GooseServeClientError: Error, Equatable, LocalizedError {
     case executableNotFound([String])
     case connectionNotOpen
     case embeddedServerURLMissing
-    case embeddedServerSecretMissing
+    case embeddedServerTokenMissing
     case invalidEmbeddedServerURL(String)
     case invalidResponse(String)
     case rpcError(String)
@@ -18,8 +18,8 @@ enum GooseServeClientError: Error, Equatable, LocalizedError {
             return "Goose server connection is not open."
         case .embeddedServerURLMissing:
             return "Embedded Catch requires GOOSE_SERVE_URL."
-        case .embeddedServerSecretMissing:
-            return "Embedded Catch requires GOOSE_SERVER__SECRET_KEY when GOOSE_SERVE_URL does not include a token."
+        case .embeddedServerTokenMissing:
+            return "Embedded Catch requires GOOSE_SERVE_URL to include a token."
         case .invalidEmbeddedServerURL(let value):
             return "Embedded Catch could not parse GOOSE_SERVE_URL: \(value)."
         case .invalidResponse(let method):
@@ -99,7 +99,6 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
 
     struct EmbeddedServerConfiguration: Equatable {
         static let serveURLEnvironmentKey = "GOOSE_SERVE_URL"
-        static let secretKeyEnvironmentKey = "GOOSE_SERVER__SECRET_KEY"
 
         let webSocketURL: URL
 
@@ -110,7 +109,7 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
                 throw GooseServeClientError.embeddedServerURLMissing
             }
 
-            guard var components = URLComponents(string: rawURL),
+            guard let components = URLComponents(string: rawURL),
                   let scheme = components.scheme,
                   scheme == "ws" || scheme == "wss",
                   components.host != nil
@@ -118,16 +117,11 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
                 throw GooseServeClientError.invalidEmbeddedServerURL(rawURL)
             }
 
-            let hasToken = components.queryItems?.contains { $0.name == "token" } == true
+            let hasToken = components.queryItems?.contains {
+                $0.name == "token" && $0.value?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            } == true
             if !hasToken {
-                guard let secret = environment[Self.secretKeyEnvironmentKey]?.trimmingCharacters(in: .whitespacesAndNewlines),
-                      !secret.isEmpty
-                else {
-                    throw GooseServeClientError.embeddedServerSecretMissing
-                }
-                var queryItems = components.queryItems ?? []
-                queryItems.append(URLQueryItem(name: "token", value: secret))
-                components.queryItems = queryItems
+                throw GooseServeClientError.embeddedServerTokenMissing
             }
 
             guard let webSocketURL = components.url else {

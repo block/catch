@@ -4,20 +4,27 @@ import Testing
 @Suite
 struct GooseServeClientTests {
     @Test
-    func embeddedConfigurationAppendsSecretToken() throws {
-        let configuration = try GooseServeClient.EmbeddedServerConfiguration(environment: [
-            "GOOSE_SERVE_URL": "ws://127.0.0.1:12345/acp",
-            "GOOSE_SERVER__SECRET_KEY": "secret"
-        ])
+    func embeddedConfigurationRequiresTokenizedServerURL() {
+        #expect(throws: GooseServeClientError.embeddedServerTokenMissing) {
+            _ = try GooseServeClient.EmbeddedServerConfiguration(environment: [
+                "GOOSE_SERVE_URL": "ws://127.0.0.1:12345/acp"
+            ])
+        }
+    }
 
-        #expect(configuration.webSocketURL.absoluteString == "ws://127.0.0.1:12345/acp?token=secret")
+    @Test
+    func embeddedConfigurationRejectsEmptyToken() {
+        #expect(throws: GooseServeClientError.embeddedServerTokenMissing) {
+            _ = try GooseServeClient.EmbeddedServerConfiguration(environment: [
+                "GOOSE_SERVE_URL": "ws://127.0.0.1:12345/acp?token="
+            ])
+        }
     }
 
     @Test
     func embeddedConfigurationPreservesExistingToken() throws {
         let configuration = try GooseServeClient.EmbeddedServerConfiguration(environment: [
-            "GOOSE_SERVE_URL": "ws://127.0.0.1:12345/acp?token=existing",
-            "GOOSE_SERVER__SECRET_KEY": "ignored"
+            "GOOSE_SERVE_URL": "ws://127.0.0.1:12345/acp?token=existing"
         ])
 
         #expect(configuration.webSocketURL.absoluteString == "ws://127.0.0.1:12345/acp?token=existing")
@@ -31,20 +38,10 @@ struct GooseServeClientTests {
     }
 
     @Test
-    func embeddedConfigurationRequiresSecretWhenURLHasNoToken() {
-        #expect(throws: GooseServeClientError.embeddedServerSecretMissing) {
-            _ = try GooseServeClient.EmbeddedServerConfiguration(environment: [
-                "GOOSE_SERVE_URL": "ws://127.0.0.1:12345/acp"
-            ])
-        }
-    }
-
-    @Test
     func embeddedConfigurationRejectsNonWebSocketURL() {
-        #expect(throws: GooseServeClientError.invalidEmbeddedServerURL("http://127.0.0.1:12345/acp")) {
+        #expect(throws: GooseServeClientError.invalidEmbeddedServerURL("http://127.0.0.1:12345/acp?token=secret")) {
             _ = try GooseServeClient.EmbeddedServerConfiguration(environment: [
-                "GOOSE_SERVE_URL": "http://127.0.0.1:12345/acp",
-                "GOOSE_SERVER__SECRET_KEY": "secret"
+                "GOOSE_SERVE_URL": "http://127.0.0.1:12345/acp?token=secret"
             ])
         }
     }
