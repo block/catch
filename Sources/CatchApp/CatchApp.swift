@@ -24,7 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var floatingWindowController = FloatingWindowController(
         store: store,
         isTestBuild: runtime.isTestBuild,
-        testWindowMode: runtime.testWindowMode
+        testWindowMode: runtime.testWindowMode,
+        testBuildLabel: runtime.testBuildLabel
     )
 
     override init() {

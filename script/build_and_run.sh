@@ -40,6 +40,14 @@ if [[ "$MODE" == "--test" || "$MODE" == "test" || "$MODE" == "--test-manual" || 
   if [[ "$MODE" == "--test-manual" || "$MODE" == "test-manual" ]]; then
     APP_ARGS=(--manual-test-window)
   fi
+
+  if [[ -n "${CATCH_TEST_BUILD_LABEL:-}" ]]; then
+    APP_ARGS+=(--test-build-label "$CATCH_TEST_BUILD_LABEL")
+  fi
+
+  if [[ ("$MODE" == "--test-manual" || "$MODE" == "test-manual") && -n "${CATCH_GLOBAL_HOTKEY:-}" ]]; then
+    APP_ARGS+=(--global-hotkey "$CATCH_GLOBAL_HOTKEY")
+  fi
 fi
 
 if [[ "$MODE" == "--embedded" || "$MODE" == "embedded" ]]; then

@@ -41,11 +41,21 @@ To launch the separate test bundle for autonomous UI checks:
 ./script/build_and_run.sh --test
 ```
 
+Name the orange test-build banner with `CATCH_TEST_BUILD_LABEL`; the script forwards it as the app's `--test-build-label` launch argument:
+
+```bash
+CATCH_TEST_BUILD_LABEL="Session Picker" ./script/build_and_run.sh --test
+```
+
 To launch the same separate test bundle for manual testing, without the agent-only order-back behavior:
 
 ```bash
-./script/build_and_run.sh --test-manual
+CATCH_TEST_BUILD_LABEL="Session Picker (Cmd-Ctrl-C)" \
+CATCH_GLOBAL_HOTKEY=cmd+ctrl+c \
+  ./script/build_and_run.sh --test-manual
 ```
+
+When launching a test build that someone might manually test, pass `CATCH_GLOBAL_HOTKEY` with a shortcut that does not conflict with any other running Catch instance. Prefer a Cmd-Ctrl shortcut, such as `cmd+ctrl+c`, but do not use `cmd+ctrl+x` because Codex uses that combo, and do not use `cmd+ctrl+v`. At minimum, do not use `alt+space` for manually testable test builds. Put the key combo in parentheses at the end of the orange banner title, such as `Session Picker (Cmd-Ctrl-C)`.
 
 ## Verification And Debugging
 

@@ -7,6 +7,7 @@ public final class FloatingWindowController: NSObject {
     private let store: SessionStore
     private let isTestBuild: Bool
     private let testWindowMode: TestWindowMode
+    private let testBuildLabel: String
     private var panel: FloatingPanel?
     private var hasPositionedPanel = false
     private var isHidingWindow = false
@@ -14,11 +15,13 @@ public final class FloatingWindowController: NSObject {
     public init(
         store: SessionStore,
         isTestBuild: Bool = false,
-        testWindowMode: TestWindowMode = .automation
+        testWindowMode: TestWindowMode = .automation,
+        testBuildLabel: String = "TEST BUILD"
     ) {
         self.store = store
         self.isTestBuild = isTestBuild
         self.testWindowMode = testWindowMode
+        self.testBuildLabel = testBuildLabel
         super.init()
 
         NotificationCenter.default.addObserver(
@@ -99,7 +102,7 @@ public final class FloatingWindowController: NSObject {
         panel.standardWindowButton(.zoomButton)?.isHidden = true
         panel.delegate = self
         panel.contentView = NSHostingView(
-            rootView: ContentView(isTestBuild: isTestBuild)
+            rootView: ContentView(isTestBuild: isTestBuild, testBuildLabel: testBuildLabel)
                 .environmentObject(store)
                 .frame(width: panelSize.width, height: panelSize.height)
         )

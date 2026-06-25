@@ -78,4 +78,56 @@ struct AppRuntimeTests {
         #expect(!runtime.registersGlobalShortcut)
         #expect(runtime.globalShortcut == nil)
     }
+
+    @Test
+    func testBuildRegistersExplicitGlobalShortcut() {
+        let runtime = AppRuntime(
+            isTestBuild: true,
+            testWindowMode: .manual,
+            arguments: ["Catch", "--global-hotkey", "cmd+ctrl+c"]
+        )
+
+        #expect(runtime.registersGlobalShortcut)
+        #expect(runtime.globalShortcut == GlobalShortcut("cmd+ctrl+c"))
+    }
+
+    @Test
+    func testBuildLabelDefaultsToTestBuild() {
+        let runtime = AppRuntime(isTestBuild: true, testWindowMode: .automation, arguments: ["Catch"])
+
+        #expect(runtime.testBuildLabel == "TEST BUILD")
+    }
+
+    @Test
+    func testBuildLabelAcceptsArgumentValue() {
+        let runtime = AppRuntime(
+            isTestBuild: true,
+            testWindowMode: .automation,
+            arguments: ["Catch", "--test-build-label", "Shortcut QA"]
+        )
+
+        #expect(runtime.testBuildLabel == "Shortcut QA")
+    }
+
+    @Test
+    func testBuildLabelAcceptsEqualsArgumentValue() {
+        let runtime = AppRuntime(
+            isTestBuild: true,
+            testWindowMode: .automation,
+            arguments: ["Catch", "--test-build-label=Session Picker"]
+        )
+
+        #expect(runtime.testBuildLabel == "Session Picker")
+    }
+
+    @Test
+    func blankTestBuildLabelFallsBackToDefault() {
+        let runtime = AppRuntime(
+            isTestBuild: true,
+            testWindowMode: .automation,
+            arguments: ["Catch", "--test-build-label", "  "]
+        )
+
+        #expect(runtime.testBuildLabel == "TEST BUILD")
+    }
 }
