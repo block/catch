@@ -7,7 +7,7 @@ Catch behaves like a transient command panel. The window should feel ready for t
 - The standalone production app registers Option-Space as the global shortcut.
 - Embedded production launches register a global shortcut only when the host passes `--global-hotkey <shortcut>`.
 - Embedded launches with `--start-hidden` initialize the app and global shortcut without showing or activating the Catch panel.
-- Triggering the shortcut shows the Catch panel, activates Catch, makes the panel key, and focuses the prompt.
+- Triggering the shortcut when the panel is hidden shows the Catch panel, activates Catch, makes the panel key, and focuses the prompt.
 - Showing the panel clears any session-row selection so the prompt and session list cannot both be focused.
 - Showing a previously hidden panel preserves the exact window location from before it was hidden.
 - If the preserved panel frame is not fully contained within any currently visible screen, showing the panel snaps it back to the default launch position.
@@ -54,6 +54,7 @@ Catch behaves like a transient command panel. The window should feel ready for t
 
 - Escape hides the panel when no completion menu is active.
 - Escape dismisses an active completion menu without hiding the panel.
+- Triggering the global shortcut when the panel is already visible hides the panel using the same direct order-out path that Escape uses when it hides.
 - The standard Hide app action and Close Window action hide the panel exactly like Escape when no completion menu is active.
 - Hide and Close Window behavior should be bound through standard app/window commands rather than lower-level keyboard-event checks for their shortcut keys.
 - Hiding orders out the panel directly; it must not call `NSApp.hide`.

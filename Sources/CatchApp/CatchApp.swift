@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let shortcut = runtime.globalShortcut {
             let registrar = GlobalShortcutRegistrar(shortcut: shortcut) { [weak self] in
-                self?.showApp()
+                self?.floatingWindowController.toggleWindowVisibility()
             }
             registrar.register()
             globalShortcutRegistrar = registrar

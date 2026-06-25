@@ -68,6 +68,18 @@ public final class FloatingWindowController: NSObject {
         }
     }
 
+    public func toggleWindowVisibility() {
+        if panel?.isVisible == true {
+            hideWindow()
+        } else {
+            showWindow()
+        }
+    }
+
+    var isWindowVisible: Bool {
+        panel?.isVisible == true
+    }
+
     func hideWindow() {
         guard let panel, panel.isVisible else { return }
         isHidingWindow = true

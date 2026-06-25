@@ -79,6 +79,20 @@ struct FloatingPanelTests {
         #expect(panel.performKeyEquivalent(with: event))
         #expect(target.didPerformClose)
     }
+
+    @Test
+    func shortcutToggleHidesVisibleWindow() {
+        let store = SessionStore(appSupportDirectoryName: "CatchTests-\(UUID().uuidString)")
+        let controller = FloatingWindowController(store: store, isTestBuild: true, testWindowMode: .manual)
+        defer { controller.hideWindow() }
+
+        controller.showWindow()
+        #expect(controller.isWindowVisible)
+
+        controller.toggleWindowVisibility()
+
+        #expect(!controller.isWindowVisible)
+    }
 }
 
 private final class MenuActionTarget: NSObject {
