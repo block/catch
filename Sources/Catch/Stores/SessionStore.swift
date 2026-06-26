@@ -130,28 +130,6 @@ public final class SessionStore: ObservableObject {
         return "New Goose session"
     }
 
-    func moveSelection(direction: SelectionDirection) {
-        guard !sessions.isEmpty else { return }
-
-        let currentIndex = selectedSessionID.flatMap { id in
-            sessions.firstIndex { $0.id == id }
-        }
-
-        let nextIndex: Int
-        switch (direction, currentIndex) {
-        case (.up, .some(let index)):
-            nextIndex = max(sessions.startIndex, index - 1)
-        case (.down, .some(let index)):
-            nextIndex = min(sessions.index(before: sessions.endIndex), index + 1)
-        case (.up, .none):
-            nextIndex = sessions.startIndex
-        case (.down, .none):
-            nextIndex = sessions.startIndex
-        }
-
-        selectedSessionID = sessions[nextIndex].id
-    }
-
     private func startPolling() {
         refreshTask?.cancel()
         refreshTask = Task { [weak self] in

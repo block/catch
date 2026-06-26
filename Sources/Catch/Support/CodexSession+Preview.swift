@@ -22,8 +22,8 @@ extension CodexSession {
                 lastEvent: "Idle"
             ),
             CodexSession(
-                provider: .codex,
-                sessionID: "preview-codex-1",
+                provider: .goose,
+                sessionID: "preview-goose-4",
                 cwd: "~/Development/catch",
                 title: "Model selector polish",
                 updatedAt: Date().addingTimeInterval(-2100),
@@ -31,8 +31,8 @@ extension CodexSession {
                 lastEvent: "Idle"
             ),
             CodexSession(
-                provider: .claudeCode,
-                sessionID: "preview-claude-1",
+                provider: .goose,
+                sessionID: "preview-goose-5",
                 cwd: "~/Development/catch",
                 title: "Today's date",
                 updatedAt: Date().addingTimeInterval(-3600),
@@ -49,8 +49,8 @@ extension CodexSession {
                 lastEvent: "Idle"
             ),
             CodexSession(
-                provider: .claudeCode,
-                sessionID: "preview-claude-2",
+                provider: .goose,
+                sessionID: "preview-goose-6",
                 cwd: "~/Development/catch",
                 title: "Prompt focus regression",
                 updatedAt: Date().addingTimeInterval(-12600),

@@ -11,25 +11,6 @@ enum AppFormatters {
         }
     }
 
-    private static func makeRelativeDateFormatter() -> RelativeDateTimeFormatter {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter
-    }
-
-    static func updatedText(for date: Date?) -> String {
-        guard let date else {
-            return "No update time"
-        }
-
-        let now = Date()
-        if date >= now || now.timeIntervalSince(date) < 1 {
-            return "Just now"
-        }
-
-        return makeRelativeDateFormatter().localizedString(for: date, relativeTo: now)
-    }
-
     static func compactAge(for date: Date?, relativeTo now: Date = Date()) -> String {
         guard let date else {
             return "-"

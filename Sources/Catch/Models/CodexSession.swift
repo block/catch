@@ -1,52 +1,12 @@
 import Foundation
 
-enum SessionStatus: String, CaseIterable, Identifiable {
+enum SessionStatus: String {
     case idle
     case working
-    case unknown
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .idle:
-            return "Idle"
-        case .working:
-            return "Working"
-        case .unknown:
-            return "Unknown"
-        }
-    }
 }
 
-enum AgentProvider: String, CaseIterable, Identifiable {
-    case codex
-    case claudeCode
+enum AgentProvider: String {
     case goose
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .codex:
-            return "Codex"
-        case .claudeCode:
-            return "Claude Code"
-        case .goose:
-            return "Goose"
-        }
-    }
-
-    var badge: String {
-        switch self {
-        case .codex:
-            return "Codex"
-        case .claudeCode:
-            return "Claude"
-        case .goose:
-            return "Goose"
-        }
-    }
 }
 
 struct CodexSession: Identifiable, Equatable {
