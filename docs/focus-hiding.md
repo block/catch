@@ -51,8 +51,9 @@ Catch behaves like a transient command panel. The window should feel ready for t
 - Generic placeholder titles such as "New chat" must not replace the submitted prompt title during the transition from prompt title to generated title.
 - Agent and skill completions must come from Goose ACP Plus `sources/list` source entries, not Catch-owned local agent manifests or metadata files.
 - Typing `@` searches only Goose agents. Typing `/` searches only Goose skills.
-- The add menu must contain only `Agent` and `Skill` actions; these insert `@` or `/` respectively to open the matching completion category.
+- The add menu must contain only `Agent` and `Skill` actions; these insert `@` or `/` respectively to open the matching completion category, and their menu item icons must be real icon images using the `@` and `/` glyphs rather than title text prefixes.
 - Accepting a Goose agent or skill completion removes the typed completion prefix from the prompt and represents the selection as separate composer state.
+- Submitting a prompt consumes the currently selected Goose agent and skills, then clears those selections from the composer so they are not reused for the next session unless selected again.
 - Submitting a prompt with a selected Goose agent must invoke the agent through Goose ACP metadata: the `session/new` request and the `session/prompt` request include `_meta.personaId` with the agent source path, and Catch sends only the cleaned user prompt text to `session/prompt`.
 - When the invoked agent has system prompt content, Catch must append it through `_goose/unstable/session/system-prompt/set` with `mode: "append"` and `key: "client_system_prompt"` before sending the user prompt.
 - Submitting a prompt with selected skills must send the skill selection as an assistant-audience text block before the user text, using Goose2's `Use these skills for this request: ...` wording.

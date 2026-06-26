@@ -23,8 +23,7 @@ public struct SessionCreationConceptView: View {
     @State private var suppressedMentionKey: String?
     @State private var gooseAgentCompletions: [MentionCompletion] = []
     @State private var skillMentionCompletions: [MentionCompletion] = []
-    @State private var selectedAgent: ComposerSelection?
-    @State private var selectedSkills: [ComposerSelection] = []
+    @State private var composerSelections = ComposerSelectionState()
     @State private var gooseProjects: [GooseProjectOption] = [.none]
     @State private var gooseModels: [ConceptModel] = ConceptModel.fallbackGooseModels
     @State private var isPromptFocused = false
@@ -37,11 +36,12 @@ public struct SessionCreationConceptView: View {
     }
 
     private var canSubmit: Bool {
-        store.isConnected && (!store.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !selectedSkills.isEmpty)
+        store.isConnected
+            && (!store.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !composerSelections.skills.isEmpty)
     }
 
     private var selectedComposables: [ComposerSelection] {
-        [selectedAgent].compactMap { $0 } + selectedSkills
+        composerSelections.selections
     }
 
     private var activeMention: ActiveMention? {
@@ -205,9 +205,7 @@ private extension SessionCreationConceptView {
                 Label {
                     Text("Agent")
                 } icon: {
-                    Text("@")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 16)
+                    Image(nsImage: AddMenuIcon.agent)
                 }
             }
 
@@ -217,9 +215,7 @@ private extension SessionCreationConceptView {
                 Label {
                     Text("Skill")
                 } icon: {
-                    Text("/")
-                        .font(.system(size: 14, weight: .semibold))
-                        .frame(width: 16)
+                    Image(nsImage: AddMenuIcon.skill)
                 }
             }
         } label: {
@@ -302,20 +298,16 @@ private extension SessionCreationConceptView {
     }
 
     func submit() {
-        let configuration = GooseSessionConfiguration(
+        let configuration = composerSelections.takeConfiguration(
             providerID: gooseModelProviderID,
             modelID: model.modelID,
             cwd: project.cwd,
             projectID: project.projectID,
-            reasoningEffort: reasoningEffort.acpValue,
-            invokedAgent: selectedAgent?.agentInvocation,
-            invokedSkills: selectedSkills.compactMap(\.skillInvocation)
+            reasoningEffort: reasoningEffort.acpValue
         )
 
         Task {
             await store.submitPrompt(configuration: configuration)
-            selectedAgent = nil
-            selectedSkills = []
             focusPrompt()
         }
     }
@@ -543,10 +535,10 @@ private extension SessionCreationConceptView {
     func select(_ completion: MentionCompletion) {
         switch completion.selection.kind {
         case .agent:
-            selectedAgent = completion.selection
+            composerSelections.agent = completion.selection
         case .skill:
-            if !selectedSkills.contains(where: { $0.id == completion.selection.id }) {
-                selectedSkills.append(completion.selection)
+            if !composerSelections.skills.contains(where: { $0.id == completion.selection.id }) {
+                composerSelections.skills.append(completion.selection)
             }
         }
         focusPrompt()
@@ -555,11 +547,11 @@ private extension SessionCreationConceptView {
     func remove(_ selection: ComposerSelection) {
         switch selection.kind {
         case .agent:
-            if selectedAgent?.id == selection.id {
-                selectedAgent = nil
+            if composerSelections.agent?.id == selection.id {
+                composerSelections.agent = nil
             }
         case .skill:
-            selectedSkills.removeAll { $0.id == selection.id }
+            composerSelections.skills.removeAll { $0.id == selection.id }
         }
         focusPrompt()
     }
@@ -611,8 +603,10 @@ private extension SessionCreationConceptView {
             .map(MentionCompletion.init(agentSource:))
             .sorted()
         gooseAgentCompletions = acpAgents
-        if let selectedAgent, !acpAgents.contains(where: { $0.selection.id == selectedAgent.id }) {
-            self.selectedAgent = nil
+        if let selectedAgent = composerSelections.agent,
+           !acpAgents.contains(where: { $0.selection.id == selectedAgent.id })
+        {
+            composerSelections.agent = nil
         }
 
         let acpSkills = metadata.skillSources
@@ -620,7 +614,7 @@ private extension SessionCreationConceptView {
             .sorted()
         skillMentionCompletions = acpSkills
         let availableSkillIDs = Set(acpSkills.map(\.selection.id))
-        selectedSkills.removeAll { !availableSkillIDs.contains($0.id) }
+        composerSelections.skills.removeAll { !availableSkillIDs.contains($0.id) }
 
         let supportedModels = selectedModels(from: metadata.supportedModels)
         if !supportedModels.isEmpty {
@@ -670,205 +664,6 @@ private extension SessionCreationConceptView {
         return models().filter { !recommendedIDs.contains($0.id) }
     }
 
-}
-
-private struct TextSelectionRange: Equatable {
-    var location: Int
-    var length: Int
-
-    init(location: Int = 0, length: Int = 0) {
-        self.location = location
-        self.length = length
-    }
-
-    init(_ range: NSRange) {
-        location = range.location
-        length = range.length
-    }
-
-    var nsRange: NSRange {
-        NSRange(location: location, length: length)
-    }
-
-    func clamped(to text: String) -> NSRange {
-        let textLength = (text as NSString).length
-        let clampedLocation = min(max(0, location), textLength)
-        let clampedLength = min(max(0, length), textLength - clampedLocation)
-        return NSRange(location: clampedLocation, length: clampedLength)
-    }
-}
-
-private struct ActiveMention: Equatable {
-    let range: NSRange
-    let query: String
-    let trigger: MentionCompletionKind
-
-    var key: String {
-        "\(trigger.rawValue):\(range.location):\(range.length):\(query)"
-    }
-
-    static func detect(in text: String, selection: TextSelectionRange) -> ActiveMention? {
-        let nsText = text as NSString
-        guard selection.length == 0, selection.location > 0, selection.location <= nsText.length else {
-            return nil
-        }
-
-        let prefix = nsText.substring(to: selection.location) as NSString
-        let triggerRanges: [(MentionCompletionKind, NSRange)] = [
-            (.agent, prefix.range(of: MentionCompletionKind.agent.symbol, options: .backwards)),
-            (.skill, prefix.range(of: MentionCompletionKind.skill.symbol, options: .backwards))
-        ].filter { $0.1.location != NSNotFound }
-        guard let (trigger, triggerRange) = triggerRanges.max(by: { $0.1.location < $1.1.location }) else {
-            return nil
-        }
-
-        let queryRange = NSRange(
-            location: triggerRange.location + triggerRange.length,
-            length: selection.location - triggerRange.location - triggerRange.length
-        )
-        let query = nsText.substring(with: queryRange)
-        guard query.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else {
-            return nil
-        }
-
-        return ActiveMention(
-            range: NSRange(location: triggerRange.location, length: selection.location - triggerRange.location),
-            query: query,
-            trigger: trigger
-        )
-    }
-}
-
-private enum MentionCompletionKind: Int, Comparable, Sendable {
-    case agent
-    case skill
-
-    static func < (lhs: MentionCompletionKind, rhs: MentionCompletionKind) -> Bool {
-        lhs.rawValue < rhs.rawValue
-    }
-
-    var label: String {
-        switch self {
-        case .agent: "Agent"
-        case .skill: "Skill"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .agent: "@"
-        case .skill: "/"
-        }
-    }
-
-    var symbolName: String {
-        switch self {
-        case .agent: "person.crop.circle"
-        case .skill: "book"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .agent: .teal
-        case .skill: .purple
-        }
-    }
-}
-
-private struct ComposerSelection: Identifiable, Equatable, Sendable {
-    let id: String
-    let kind: MentionCompletionKind
-    let title: String
-    let subtitle: String
-    let agentInvocation: GooseInvokedAgent?
-    let skillInvocation: GooseInvokedSkill?
-}
-
-private struct MentionCompletion: Identifiable, Comparable, Sendable {
-    let id: String
-    let kind: MentionCompletionKind
-    let title: String
-    let subtitle: String
-    let searchText: String
-    let selection: ComposerSelection
-
-    init(
-        id: String,
-        kind: MentionCompletionKind,
-        title: String,
-        subtitle: String,
-        searchText: String,
-        selection: ComposerSelection
-    ) {
-        self.id = id
-        self.kind = kind
-        self.title = title
-        self.subtitle = subtitle
-        self.searchText = searchText
-        self.selection = selection
-    }
-
-    static func < (lhs: MentionCompletion, rhs: MentionCompletion) -> Bool {
-        if lhs.kind != rhs.kind {
-            return lhs.kind < rhs.kind
-        }
-        return lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-    }
-
-    init(agentSource: GooseSourceEntry) {
-        let displayTitle = agentSource.title ?? agentSource.name
-        let sourceID = agentSource.path ?? "agent:\(agentSource.name)"
-        let agentInvocation = agentSource.path.map { personaID in
-            GooseInvokedAgent(
-                personaID: personaID,
-                displayName: displayTitle,
-                systemPrompt: agentSource.content
-            )
-        }
-        let selection = ComposerSelection(
-            id: "agent:\(sourceID)",
-            kind: .agent,
-            title: displayTitle,
-            subtitle: agentSource.description,
-            agentInvocation: agentInvocation,
-            skillInvocation: nil
-        )
-        self.init(
-            id: selection.id,
-            kind: .agent,
-            title: displayTitle,
-            subtitle: agentSource.description.isEmpty ? "Goose agent" : agentSource.description,
-            searchText: "\(displayTitle) \(agentSource.name) \(agentSource.description)",
-            selection: selection
-        )
-    }
-
-    init(skillSource: GooseSourceEntry) {
-        let displayTitle = skillSource.title ?? skillSource.name
-        let sourceID = skillSource.path ?? "\(skillSource.type):\(skillSource.name)"
-        let skillInvocation = GooseInvokedSkill(
-            id: sourceID,
-            displayName: skillSource.name
-        )
-        let selection = ComposerSelection(
-            id: "skill:\(sourceID)",
-            kind: .skill,
-            title: displayTitle,
-            subtitle: skillSource.description,
-            agentInvocation: nil,
-            skillInvocation: skillInvocation
-        )
-        self.init(
-            id: selection.id,
-            kind: .skill,
-            title: displayTitle,
-            subtitle: skillSource.description.isEmpty ? "Goose skill" : skillSource.description,
-            searchText: "\(displayTitle) \(skillSource.name) \(skillSource.description)"
-                + " \(skillSource.type)",
-            selection: selection
-        )
-    }
 }
 
 private struct MentionCompletionRow: View {
@@ -970,85 +765,6 @@ private struct ComposerSelectionChip: View {
         case .skill:
             Color(red: 0.48, green: 0.28, blue: 0.02)
         }
-    }
-}
-
-private struct FlowLayout: Layout {
-    let spacing: CGFloat
-    let lineSpacing: CGFloat
-
-    func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout Void
-    ) -> CGSize {
-        let rows = rows(for: subviews, in: proposal.width)
-        let width = rows.reduce(CGFloat.zero) { max($0, $1.width) }
-        let height = rows.reduce(CGFloat.zero) { $0 + $1.height }
-            + CGFloat(max(0, rows.count - 1)) * lineSpacing
-        return CGSize(width: proposal.width ?? width, height: height)
-    }
-
-    func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout Void
-    ) {
-        var y = bounds.minY
-        for row in rows(for: subviews, in: bounds.width) {
-            var x = bounds.minX
-            for element in row.elements {
-                subviews[element.index].place(
-                    at: CGPoint(x: x, y: y),
-                    proposal: ProposedViewSize(element.size)
-                )
-                x += element.size.width + spacing
-            }
-            y += row.height + lineSpacing
-        }
-    }
-
-    private func rows(for subviews: Subviews, in proposedWidth: CGFloat?) -> [FlowRow] {
-        let maxWidth = proposedWidth ?? .greatestFiniteMagnitude
-        var rows: [FlowRow] = []
-        var current = FlowRow()
-
-        for index in subviews.indices {
-            let subview = subviews[index]
-            let size = subview.sizeThatFits(.unspecified)
-            let nextWidth = current.elements.isEmpty ? size.width : current.width + spacing + size.width
-            if !current.elements.isEmpty, nextWidth > maxWidth {
-                rows.append(current)
-                current = FlowRow()
-            }
-            current.append(FlowElement(index: index, size: size), spacing: spacing)
-        }
-
-        if !current.elements.isEmpty {
-            rows.append(current)
-        }
-        return rows
-    }
-}
-
-private struct FlowElement {
-    let index: Int
-    let size: CGSize
-}
-
-private struct FlowRow {
-    var elements: [FlowElement] = []
-    var width: CGFloat = 0
-    var height: CGFloat = 0
-
-    mutating func append(_ element: FlowElement, spacing: CGFloat) {
-        if !elements.isEmpty {
-            width += spacing
-        }
-        elements.append(element)
-        width += element.size.width
-        height = max(height, element.size.height)
     }
 }
 
@@ -1228,100 +944,6 @@ private struct PromptTextView: NSViewRepresentable {
     }
 }
 
-private struct PromptMoveContext {
-    let isCursorOnLastLine: Bool
-}
-
-private final class PromptNSTextView: NSTextView {
-    var onSubmit: (() -> Void)?
-    var onFocusIntent: (() -> Void)?
-    var onMove: ((SelectionDirection, PromptMoveContext) -> Bool)?
-    var onAcceptCompletion: (() -> Bool)?
-
-    override func mouseDown(with event: NSEvent) {
-        onFocusIntent?()
-        super.mouseDown(with: event)
-    }
-
-    override func performKeyEquivalent(with event: NSEvent) -> Bool {
-        // NSTextView handles command-key input before our panel sees it. Route
-        // key equivalents through the app menu so Close/Hide stay menu-driven.
-        if NSApp.mainMenu?.performKeyEquivalent(with: event) == true {
-            return true
-        }
-
-        return super.performKeyEquivalent(with: event)
-    }
-
-    override func keyDown(with event: NSEvent) {
-        let activeModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        if activeModifiers == .command, event.keyCode == 36 {
-            onSubmit?()
-            return
-        }
-
-        if activeModifiers.isEmpty {
-            switch event.keyCode {
-            case 126:
-                if onMove?(.up, moveContext()) == true {
-                    return
-                }
-            case 125:
-                if onMove?(.down, moveContext()) == true {
-                    return
-                }
-            default:
-                break
-            }
-        }
-
-        if activeModifiers.isEmpty, event.keyCode == 36 || event.keyCode == 48 {
-            if onAcceptCompletion?() == true {
-                return
-            }
-        }
-
-        super.keyDown(with: event)
-    }
-
-    private func moveContext() -> PromptMoveContext {
-        PromptMoveContext(isCursorOnLastLine: isCursorOnLastVisualLine)
-    }
-
-    private var isCursorOnLastVisualLine: Bool {
-        guard selectedRange().length == 0,
-              let layoutManager,
-              let textContainer
-        else {
-            return false
-        }
-
-        layoutManager.ensureLayout(for: textContainer)
-
-        let textLength = (string as NSString).length
-        let cursorLocation = min(selectedRange().location, textLength)
-        let cursorGlyphIndex: Int
-        if textLength == 0 {
-            cursorGlyphIndex = 0
-        } else {
-            cursorGlyphIndex = layoutManager.glyphIndexForCharacter(at: max(0, min(cursorLocation, textLength - 1)))
-        }
-
-        var cursorLineRange = NSRange(location: 0, length: 0)
-        _ = layoutManager.lineFragmentRect(forGlyphAt: cursorGlyphIndex, effectiveRange: &cursorLineRange)
-
-        let glyphCount = layoutManager.numberOfGlyphs
-        guard glyphCount > 0 else {
-            return true
-        }
-
-        var lastLineRange = NSRange(location: 0, length: 0)
-        _ = layoutManager.lineFragmentRect(forGlyphAt: glyphCount - 1, effectiveRange: &lastLineRange)
-
-        return NSIntersectionRange(cursorLineRange, lastLineRange).length > 0
-    }
-}
-
 private struct ConceptRecentRow: View {
     let session: CodexSession
     let isSelected: Bool
@@ -1437,229 +1059,6 @@ private struct SessionActivitySpinner: View {
             .frame(width: sessionActivitySpinnerSize, height: sessionActivitySpinnerSize)
         }
         .accessibilityLabel("Working")
-    }
-}
-
-// MARK: - UI domain
-
-struct ConceptModel: Identifiable, Equatable, Hashable, Sendable {
-    static let fallbackGooseModelIDs = [
-        "goose-claude-4-6-sonnet",
-        "goose-claude-4-7-opus",
-        "goose-claude-fable-5",
-        "goose-claude-haiku-4-5",
-        "goose-claude-opus-4-8",
-        "goose-gpt-5-4-mini",
-        "goose-gpt-5-5"
-    ]
-    static let fallbackGooseModels = gooseModels(from: fallbackGooseModelIDs)
-
-    let id: String
-    let name: String
-    let modelID: String?
-    let isRecommended: Bool
-
-    init(_ name: String, modelID: String?, isRecommended: Bool = false) {
-        id = modelID == "default" ? "default" : (modelID ?? "default")
-        self.name = name
-        self.modelID = modelID
-        self.isRecommended = isRecommended
-    }
-
-    static func gooseModels(from ids: [String]) -> [ConceptModel] {
-        let parsedModels = ids.compactMap(ParsedGooseModel.init(id:))
-        let latestModelByFamily = Dictionary(grouping: parsedModels, by: \.familyKey)
-            .compactMapValues { models in
-                models.max { left, right in
-                    left.version.lexicographicallyPrecedes(right.version)
-                }?.id
-            }
-
-        return parsedModels
-            .map { parsed in
-                ConceptModel(
-                    parsed.displayName,
-                    modelID: parsed.id,
-                    isRecommended: latestModelByFamily[parsed.familyKey] == parsed.id
-                )
-            }
-            .deduplicatedByID()
-            .sorted { left, right in
-                let leftRank = ParsedGooseModel(id: left.id)?.sortRank ?? 4
-                let rightRank = ParsedGooseModel(id: right.id)?.sortRank ?? 4
-                if leftRank != rightRank {
-                    return leftRank < rightRank
-                }
-                return left.name.localizedStandardCompare(right.name) == .orderedAscending
-            }
-    }
-}
-
-struct ParsedGooseModel {
-    let id: String
-    let familyKey: String
-    let familyTokens: [String]
-    let version: [Int]
-
-    init?(id: String) {
-        guard id.hasPrefix("goose-") else { return nil }
-
-        var familyTokens: [String] = []
-        var version: [Int] = []
-        for token in id.dropFirst("goose-".count).split(separator: "-").map(String.init) {
-            if let numericToken = Int(token) {
-                version.append(numericToken)
-            } else {
-                familyTokens.append(token)
-            }
-        }
-
-        guard !familyTokens.isEmpty, !version.isEmpty else { return nil }
-
-        self.id = id
-        self.familyKey = familyTokens.joined(separator: "-")
-        self.familyTokens = familyTokens
-        self.version = version
-    }
-
-    var displayName: String {
-        let formattedFamilyTokens = familyTokens.map(Self.formatFamilyToken)
-        let versionString = version.map(String.init).joined(separator: ".")
-
-        if formattedFamilyTokens.first == "GPT" {
-            let suffix = formattedFamilyTokens.dropFirst().joined(separator: " ")
-            return suffix.isEmpty ? "GPT-\(versionString)" : "GPT-\(versionString) \(suffix.lowercased())"
-        }
-
-        return (formattedFamilyTokens + [versionString]).joined(separator: " ")
-    }
-
-    var sortRank: Int {
-        if familyKey == "gpt" { return 0 }
-        if familyKey.contains("opus") { return 1 }
-        if familyKey.contains("haiku") { return 3 }
-        return 2
-    }
-
-    private static func formatFamilyToken(_ token: String) -> String {
-        switch token.lowercased() {
-        case "gpt":
-            return "GPT"
-        case "chatgpt":
-            return "ChatGPT"
-        default:
-            guard let first = token.first else { return "" }
-            return String(first).uppercased() + token.dropFirst().lowercased()
-        }
-    }
-}
-
-private extension Array where Element == ConceptModel {
-    func deduplicatedByID() -> [ConceptModel] {
-        var seen: Set<String> = []
-        var unique: [ConceptModel] = []
-
-        for model in self where seen.insert(model.id).inserted {
-            unique.append(model)
-        }
-
-        return unique
-    }
-}
-
-private enum ReasoningEffort: String, CaseIterable, Identifiable {
-    case off
-    case low
-    case medium
-    case high
-    case max
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .off: "Off"
-        case .low: "Low"
-        case .medium: "Medium"
-        case .high: "High"
-        case .max: "Max"
-        }
-    }
-
-    var shortTitle: String {
-        switch self {
-        case .off: "Off"
-        case .low: "Low"
-        case .medium: "Medium"
-        case .high: "High"
-        case .max: "Max"
-        }
-    }
-
-    var acpValue: String? {
-        rawValue
-    }
-}
-
-private struct GooseProjectOption: Identifiable, Equatable, Comparable, Sendable {
-    let id: String
-    let title: String
-    let cwd: String
-    let projectID: String?
-    let tint: Color
-
-    static let none = GooseProjectOption(
-        id: "none",
-        title: "No project",
-        cwd: NSHomeDirectory(),
-        projectID: nil,
-        tint: .secondary.opacity(0.4)
-    )
-
-    init(id: String, title: String, cwd: String, projectID: String?, tint: Color) {
-        self.id = id
-        self.title = title
-        self.cwd = cwd
-        self.projectID = projectID
-        self.tint = tint
-    }
-
-    init(source: GooseSourceEntry) {
-        let displayTitle = source.title ?? source.name
-        self.init(
-            id: source.name,
-            title: displayTitle,
-            cwd: Self.defaultCWD(for: source),
-            projectID: source.name,
-            tint: source.color.flatMap(Color.init(hex:)) ?? .purple
-        )
-    }
-
-    static func < (lhs: GooseProjectOption, rhs: GooseProjectOption) -> Bool {
-        lhs.title.localizedStandardCompare(rhs.title) == .orderedAscending
-    }
-
-    private static func defaultCWD(for source: GooseSourceEntry) -> String {
-        let artifacts = NSHomeDirectory() + "/goose artifacts"
-        if FileManager.default.fileExists(atPath: artifacts) {
-            return artifacts
-        }
-
-        return NSHomeDirectory()
-    }
-}
-
-private extension Color {
-    init?(hex: String) {
-        let trimmed = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        guard trimmed.count == 6, let value = Int(trimmed, radix: 16) else {
-            return nil
-        }
-
-        let red = Double((value >> 16) & 0xff) / 255
-        let green = Double((value >> 8) & 0xff) / 255
-        let blue = Double(value & 0xff) / 255
-        self.init(red: red, green: green, blue: blue)
     }
 }
 
@@ -1828,66 +1227,5 @@ private struct SessionCreationConceptPreviewHost: View {
                 store.isConnected = true
                 store.sessions = CodexSession.previewSessions
             }
-    }
-}
-
-extension CodexSession {
-    static var previewSessions: [CodexSession] {
-        [
-            CodexSession(
-                provider: .goose,
-                sessionID: "preview-goose-1",
-                cwd: "~/Development/catch",
-                title: "Square iOS Dependency Graph R...",
-                updatedAt: Date().addingTimeInterval(-240),
-                status: .working,
-                lastEvent: "Working"
-            ),
-            CodexSession(
-                provider: .goose,
-                sessionID: "preview-goose-2",
-                cwd: "~/Development/catch",
-                title: "At symbol",
-                updatedAt: Date().addingTimeInterval(-960),
-                status: .idle,
-                lastEvent: "Idle"
-            ),
-            CodexSession(
-                provider: .codex,
-                sessionID: "preview-codex-1",
-                cwd: "~/Development/catch",
-                title: "Model selector polish",
-                updatedAt: Date().addingTimeInterval(-2100),
-                status: .idle,
-                lastEvent: "Idle"
-            ),
-            CodexSession(
-                provider: .claudeCode,
-                sessionID: "preview-claude-1",
-                cwd: "~/Development/catch",
-                title: "Today's date",
-                updatedAt: Date().addingTimeInterval(-3600),
-                status: .idle,
-                lastEvent: "Idle"
-            ),
-            CodexSession(
-                provider: .goose,
-                sessionID: "preview-goose-3",
-                cwd: "~/Development/catch",
-                title: "Before and after",
-                updatedAt: Date().addingTimeInterval(-7200),
-                status: .idle,
-                lastEvent: "Idle"
-            ),
-            CodexSession(
-                provider: .claudeCode,
-                sessionID: "preview-claude-2",
-                cwd: "~/Development/catch",
-                title: "Prompt focus regression",
-                updatedAt: Date().addingTimeInterval(-12600),
-                status: .idle,
-                lastEvent: "Idle"
-            )
-        ]
     }
 }

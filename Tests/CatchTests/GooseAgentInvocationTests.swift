@@ -56,6 +56,64 @@ struct GooseAgentInvocationTests {
     }
 
     @Test
+    func `composer selections are consumed when creating submission configuration`() {
+        let agent = GooseInvokedAgent(
+            personaID: "/Users/test/.agents/agents/reviewer.md",
+            displayName: "Reviewer",
+            systemPrompt: "Review carefully."
+        )
+        let firstSkill = GooseInvokedSkill(id: "global:code-review", displayName: "code-review")
+        let secondSkill = GooseInvokedSkill(id: "global:swift-testing", displayName: "swift-testing")
+        var state = ComposerSelectionState(
+            agent: ComposerSelection(
+                id: "agent:/Users/test/.agents/agents/reviewer.md",
+                kind: .agent,
+                title: "Reviewer",
+                subtitle: "Reviews code",
+                agentInvocation: agent,
+                skillInvocation: nil
+            ),
+            skills: [
+                ComposerSelection(
+                    id: "skill:code-review",
+                    kind: .skill,
+                    title: "code-review",
+                    subtitle: "Reviews code",
+                    agentInvocation: nil,
+                    skillInvocation: firstSkill
+                ),
+                ComposerSelection(
+                    id: "skill:swift-testing",
+                    kind: .skill,
+                    title: "swift-testing",
+                    subtitle: "Writes Swift tests",
+                    agentInvocation: nil,
+                    skillInvocation: secondSkill
+                )
+            ]
+        )
+
+        let configuration = state.takeConfiguration(
+            providerID: "databricks_v2",
+            modelID: "goose-gpt-5-5",
+            cwd: "/tmp/project",
+            projectID: "project-1",
+            reasoningEffort: "high"
+        )
+
+        #expect(configuration == GooseSessionConfiguration(
+            providerID: "databricks_v2",
+            modelID: "goose-gpt-5-5",
+            cwd: "/tmp/project",
+            projectID: "project-1",
+            reasoningEffort: "high",
+            invokedAgent: agent,
+            invokedSkills: [firstSkill, secondSkill]
+        ))
+        #expect(state == ComposerSelectionState())
+    }
+
+    @Test
     func `prompt params include assistant-audience skill instructions before user text`() throws {
         let params = GooseServeClient.promptParams(
             sessionID: "session-1",
