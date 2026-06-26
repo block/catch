@@ -3,6 +3,7 @@ import Foundation
 public struct AppRuntime: Sendable {
     public let isTestBuild: Bool
     public let testWindowMode: TestWindowMode
+    public let testInstanceID: String?
     public let testBuildLabel: String
     public let isEmbedded: Bool
     public let startsHidden: Bool
@@ -11,12 +12,26 @@ public struct AppRuntime: Sendable {
     public static let current = AppRuntime(
         isTestBuild: ProcessInfo.processInfo.environment["CATCH_TEST_BUILD"] == "1",
         testWindowMode: ProcessInfo.processInfo.arguments.contains("--manual-test-window") ? .manual : .automation,
-        arguments: ProcessInfo.processInfo.arguments
+        arguments: ProcessInfo.processInfo.arguments,
+        environment: ProcessInfo.processInfo.environment
     )
 
-    public init(isTestBuild: Bool, testWindowMode: TestWindowMode, arguments: [String]) {
+    public init(
+        isTestBuild: Bool,
+        testWindowMode: TestWindowMode,
+        arguments: [String],
+        environment: [String: String] = [:]
+    ) {
         self.isTestBuild = isTestBuild
         self.testWindowMode = testWindowMode
+        if isTestBuild {
+            testInstanceID = Self.sanitizedTestInstanceID(
+                Self.argumentValue(named: "--test-instance-id", in: arguments)
+                    ?? environment["CATCH_TEST_INSTANCE_ID"]
+            )
+        } else {
+            testInstanceID = nil
+        }
         testBuildLabel = Self.argumentValue(named: "--test-build-label", in: arguments)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfEmpty ?? "TEST BUILD"
@@ -38,7 +53,9 @@ public struct AppRuntime: Sendable {
     }
 
     public var appName: String {
-        isTestBuild ? "CatchTest" : "Catch"
+        guard isTestBuild else { return "Catch" }
+        guard let testInstanceID else { return "CatchTest" }
+        return "CatchTest-\(testInstanceID)"
     }
 
     public var registersGlobalShortcut: Bool {
@@ -71,6 +88,35 @@ private extension AppRuntime {
             }
         }
         return nil
+    }
+
+    static func sanitizedTestInstanceID(_ rawValue: String?) -> String? {
+        guard let rawValue else { return nil }
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        var sanitized = String.UnicodeScalarView()
+        var lastWasSeparator = true
+
+        for scalar in trimmed.lowercased().unicodeScalars {
+            switch scalar.value {
+            case 48...57, 97...122:
+                sanitized.append(scalar)
+                lastWasSeparator = false
+            default:
+                if !lastWasSeparator {
+                    sanitized.append("-")
+                    lastWasSeparator = true
+                }
+            }
+        }
+
+        while sanitized.last?.value == 45 {
+            sanitized.removeLast()
+        }
+
+        let value = String(sanitized)
+        return value.isEmpty ? nil : value
     }
 }
 
