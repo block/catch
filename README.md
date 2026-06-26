@@ -43,6 +43,22 @@ To launch the separate test bundle for autonomous UI checks:
 
 Autonomous test launches do not need a global shortcut.
 
+By default, test mode keeps the simple shared identity `CatchTest`, with bundle identifier `xyz.block.catch.test`, bundle path `~/Applications/CatchTest.app`, and app-support directory `CatchTest`.
+
+When multiple development threads or worktrees need to run test builds at the same time, pass a unique test instance id. The id is sanitized to lowercase ASCII letters and numbers separated by hyphens, then used to isolate the app/process name, bundle identifier, bundle path, app-support directory, and restart behavior:
+
+```bash
+CATCH_TEST_INSTANCE_ID=e846-session-picker ./script/build_and_run.sh --test
+```
+
+The same id can be passed as an argument:
+
+```bash
+./script/build_and_run.sh --test --test-instance-id e846-session-picker
+```
+
+That example launches `CatchTest-e846-session-picker`, signs it as `xyz.block.catch.test.e846-session-picker`, stages it at `~/Applications/CatchTest-e846-session-picker.app`, and stores state under `Application Support/CatchTest-e846-session-picker`.
+
 Name the orange test-build banner with `CATCH_TEST_BUILD_LABEL`; the script forwards it as the app's `--test-build-label` launch argument:
 
 ```bash
@@ -52,12 +68,13 @@ CATCH_TEST_BUILD_LABEL="Session Picker" ./script/build_and_run.sh --test
 To launch the same separate test bundle for manual testing, without the agent-only order-back behavior:
 
 ```bash
+CATCH_TEST_INSTANCE_ID=e846-session-picker \
 CATCH_TEST_BUILD_LABEL="Session Picker (Cmd-Ctrl-C)" \
 CATCH_GLOBAL_HOTKEY=cmd+ctrl+c \
   ./script/build_and_run.sh --test-manual
 ```
 
-When launching a test build that someone might manually test, pass `CATCH_GLOBAL_HOTKEY` so CatchTest registers a shortcut that does not conflict with any other running Catch instance. Prefer a Cmd-Ctrl shortcut, such as `cmd+ctrl+c`, but do not use `cmd+ctrl+x` because Codex uses that combo, and do not use `cmd+ctrl+v`. At minimum, do not use `alt+space` for manually testable test builds. Put the key combo in parentheses at the end of the orange banner title, such as `Session Picker (Cmd-Ctrl-C)`.
+When launching a test build that someone might manually test, pass `CATCH_GLOBAL_HOTKEY` so CatchTest registers a shortcut that does not conflict with any other running Catch instance. Prefer a Cmd-Ctrl shortcut, such as `cmd+ctrl+c`, but do not use `cmd+ctrl+x` because Codex uses that combo, and do not use `cmd+ctrl+v`. The script rejects `--test-manual` without `CATCH_GLOBAL_HOTKEY`, and it rejects `alt+space` for manually testable test builds. Put the key combo in parentheses at the end of the orange banner title, such as `Session Picker (Cmd-Ctrl-C)`.
 
 ## Verification And Debugging
 

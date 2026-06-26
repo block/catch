@@ -12,6 +12,9 @@ Catch behaves like a transient command panel. The window should feel ready for t
 - Showing a previously hidden panel preserves the exact window location from before it was hidden.
 - If the preserved panel frame is not fully contained within any currently visible screen, showing the panel snaps it back to the default launch position.
 - The automation test build does not need a global shortcut. Manually testable test builds register an explicitly configured `--global-hotkey <shortcut>` so they can avoid conflicting with another running Catch instance.
+- Test builds without a test instance id use the shared `CatchTest` app/process name, `xyz.block.catch.test` bundle identifier, `~/Applications/CatchTest.app` bundle path, and `CatchTest` app-support directory.
+- Test builds with a test instance id must sanitize that id to lowercase ASCII letters and numbers separated by hyphens, then use it to isolate the app/process name, bundle identifier, bundle path, app-support directory, and same-instance restart behavior. For example, instance id `e846-session-picker` uses `CatchTest-e846-session-picker`, `xyz.block.catch.test.e846-session-picker`, `~/Applications/CatchTest-e846-session-picker.app`, and `Application Support/CatchTest-e846-session-picker`.
+- Restarting one isolated test build must not terminate or overwrite another test instance.
 
 ## Prompt Focus
 

@@ -80,6 +80,67 @@ struct AppRuntimeTests {
     }
 
     @Test
+    func testBuildWithoutInstanceUsesSharedTestIdentity() {
+        let runtime = AppRuntime(isTestBuild: true, testWindowMode: .automation, arguments: ["Catch"])
+
+        #expect(runtime.testInstanceID == nil)
+        #expect(runtime.appName == "CatchTest")
+        #expect(runtime.appSupportDirectoryName == "CatchTest")
+    }
+
+    @Test
+    func testBuildInstanceArgumentUsesIsolatedIdentity() {
+        let runtime = AppRuntime(
+            isTestBuild: true,
+            testWindowMode: .automation,
+            arguments: ["Catch", "--test-instance-id", "Thread 019F/Session Picker"]
+        )
+
+        #expect(runtime.testInstanceID == "thread-019f-session-picker")
+        #expect(runtime.appName == "CatchTest-thread-019f-session-picker")
+        #expect(runtime.appSupportDirectoryName == "CatchTest-thread-019f-session-picker")
+    }
+
+    @Test
+    func testBuildInstanceAcceptsEqualsArgumentValue() {
+        let runtime = AppRuntime(
+            isTestBuild: true,
+            testWindowMode: .automation,
+            arguments: ["Catch", "--test-instance-id=E846 Catch"]
+        )
+
+        #expect(runtime.testInstanceID == "e846-catch")
+        #expect(runtime.appSupportDirectoryName == "CatchTest-e846-catch")
+    }
+
+    @Test
+    func testBuildInstanceFallsBackToEnvironment() {
+        let runtime = AppRuntime(
+            isTestBuild: true,
+            testWindowMode: .automation,
+            arguments: ["Catch"],
+            environment: ["CATCH_TEST_INSTANCE_ID": "Env Instance"]
+        )
+
+        #expect(runtime.testInstanceID == "env-instance")
+        #expect(runtime.appSupportDirectoryName == "CatchTest-env-instance")
+    }
+
+    @Test
+    func productionIgnoresTestInstanceEnvironment() {
+        let runtime = AppRuntime(
+            isTestBuild: false,
+            testWindowMode: .automation,
+            arguments: ["Catch"],
+            environment: ["CATCH_TEST_INSTANCE_ID": "Env Instance"]
+        )
+
+        #expect(runtime.testInstanceID == nil)
+        #expect(runtime.appName == "Catch")
+        #expect(runtime.appSupportDirectoryName == "Catch")
+    }
+
+    @Test
     func testBuildRegistersExplicitGlobalShortcut() {
         let runtime = AppRuntime(
             isTestBuild: true,
