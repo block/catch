@@ -6,7 +6,9 @@
 
 ## Build And Run
 
-Use the project-local macOS run script:
+### Normal App (Opt-In)
+
+Use the normal app launch only when you intentionally want to create, overwrite, install, or launch the main Catch app:
 
 ```bash
 ./script/build_and_run.sh
@@ -19,21 +21,9 @@ The script follows the Build macOS Apps workflow:
 - stages a macOS `.app` bundle at `~/Applications/Catch.app`
 - launches the app bundle with `/usr/bin/open -n`
 
-The Codex app Run action is wired to the same script through `.codex/environments/environment.toml`.
+Routine feature work, agent validation, visible-change handoff, and post-merge work should not run this command. If `~/Applications/Catch.app` does not exist, this command creates it, so agents should use it only after an explicit request to create, overwrite, install, or launch the normal/main app.
 
-To launch the app in embedded-host mode:
-
-```bash
-GOOSE_SERVE_URL=ws://127.0.0.1:32845/acp?token=local-secret \
-CATCH_GLOBAL_HOTKEY=alt+space \
-  ./script/build_and_run.sh --embedded
-```
-
-Embedded mode connects to a host-provided Goose ACP server. The host should provide `GOOSE_SERVE_URL` with a non-empty `token` query item.
-
-Embedded hosts may also pass `--global-hotkey <shortcut>` to let Catch register a native macOS global shortcut. The run script accepts `CATCH_GLOBAL_HOTKEY` and forwards it as that launch argument.
-
-Embedded hosts may pass `--start-hidden` when restarting Catch after a configuration change. Catch will initialize normally but wait to show its panel until the global shortcut fires. The run script accepts `CATCH_START_HIDDEN=1` and forwards that launch argument in embedded mode.
+### Test App (Agent Default)
 
 To launch the separate test bundle for autonomous UI checks:
 
@@ -59,19 +49,41 @@ CATCH_GLOBAL_HOTKEY=cmd+ctrl+c \
 
 When launching a test build that someone might manually test, pass `CATCH_GLOBAL_HOTKEY` so CatchTest registers a shortcut that does not conflict with any other running Catch instance. Prefer a Cmd-Ctrl shortcut, such as `cmd+ctrl+c`, but do not use `cmd+ctrl+x` because Codex uses that combo, and do not use `cmd+ctrl+v`. At minimum, do not use `alt+space` for manually testable test builds. Put the key combo in parentheses at the end of the orange banner title, such as `Session Picker (Cmd-Ctrl-C)`.
 
+The Codex app Run action is wired through `.codex/environments/environment.toml` to launch `CatchTest` with `--test-manual`, not the normal `Catch.app`. The checked-in Run action uses `Cmd-Ctrl-R` and labels the banner `Codex Run (Cmd-Ctrl-R)`.
+
+### Embedded Normal App (Opt-In)
+
+To intentionally launch the normal app in embedded-host mode:
+
+```bash
+GOOSE_SERVE_URL=ws://127.0.0.1:32845/acp?token=local-secret \
+CATCH_GLOBAL_HOTKEY=alt+space \
+  ./script/build_and_run.sh --embedded
+```
+
+Embedded mode connects to a host-provided Goose ACP server. The host should provide `GOOSE_SERVE_URL` with a non-empty `token` query item.
+
+Embedded hosts may also pass `--global-hotkey <shortcut>` to let Catch register a native macOS global shortcut. The run script accepts `CATCH_GLOBAL_HOTKEY` and forwards it as that launch argument.
+
+Embedded hosts may pass `--start-hidden` when restarting Catch after a configuration change. Catch will initialize normally but wait to show its panel until the global shortcut fires. The run script accepts `CATCH_START_HIDDEN=1` and forwards that launch argument in embedded mode.
+
+Embedded mode stages and launches the normal `~/Applications/Catch.app`, so agents should use it only after an explicit request to run the normal app in embedded mode.
+
 ## Verification And Debugging
 
 ### Continuous Integration
 
-`.github/workflows/build.yml` runs on pushes to `main` and pull requests to `main`. It selects an installed Xcode 26 toolchain for Swift tools 6.2, then runs `swift build` and `swift test`.
+`.github/workflows/build.yml` runs on pull requests to `main`. It selects an installed Xcode 26 toolchain for Swift tools 6.2, then runs `swift build` and `swift test`.
 
-The release packaging workflow stays separate in `.github/workflows/release.yml` and only runs for `v*` tags or manual dispatch. To make the per-commit build block merges, a repository admin still needs to add the `Swift build and test` check to the `main` branch protection rule in GitHub settings.
+The workflow intentionally does not run on pushes to `main`, so merging a completed feature branch to `main` does not start a build or launch. The release packaging workflow stays separate in `.github/workflows/release.yml` and only runs for `v*` tags or manual dispatch. To make the pull request build block merges, a repository admin still needs to add the `Swift build and test` check to the `main` branch protection rule in GitHub settings.
 
 ### SwiftUI Previews
 
 Open the package in Xcode and select the `CatchKit` scheme before refreshing SwiftUI previews. `CatchKit` is exposed as a dynamic library product so previews can build through a framework scheme; using the `Catch` executable scheme can produce Xcode's `ENABLE_DEBUG_DYLIB` preview error.
 
-### Build and run
+### Normal-App Debugging (Opt-In)
+
+These commands create or overwrite `~/Applications/Catch.app`; use them only when explicitly validating the normal app. For routine branch validation, prefer `swift build`, `swift test`, or a `CatchTest` launch.
 
 ```bash
 ./script/build_and_run.sh --verify

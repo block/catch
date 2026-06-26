@@ -8,4 +8,4 @@ script = ""
 [[actions]]
 name = "Run"
 icon = "run"
-command = "./script/build_and_run.sh"
+command = "CATCH_TEST_BUILD_LABEL='Codex Run (Cmd-Ctrl-R)' CATCH_GLOBAL_HOTKEY=cmd+ctrl+r ./script/build_and_run.sh --test-manual"

@@ -12,7 +12,11 @@ Drop to AppKit only when SwiftUI does not expose the needed macOS behavior clean
 
 # macOS App Testing
 
-Default to the test build for agent-driven UI checks:
+Default to the separate test bundle for agent-driven UI checks and handoffs. Routine agent work must not create, overwrite, install, or relaunch `~/Applications/Catch.app`; if the normal app is absent, do not create it. Use a normal/main `Catch.app` command only when the user explicitly asks to create, overwrite, install, or launch the normal app.
+
+Commands without `--test` or `--test-manual` can stage or launch the normal `Catch.app`; avoid them for routine validation, visible UI changes, and post-merge work.
+
+For autonomous agent checks:
 
 ```bash
 ./script/build_and_run.sh --test
@@ -20,13 +24,15 @@ Default to the test build for agent-driven UI checks:
 
 The test build is intentionally close to the production floating panel, but uses a separate bundle/process name, separate app-support workspace for sessions created from test mode, no auto-hide on defocus, a normal window level so it can sit behind the user's windows, and a visible orange test-build label. Set `CATCH_TEST_BUILD_LABEL` when launching a test build for a specific feature or scenario.
 
-Use `./script/build_and_run.sh --test` for autonomous agent checks. That launch mode orders the test window behind other windows and keeps it in the current Space so it stays out of the developer's way.
+That launch mode orders the test window behind other windows and keeps it in the current Space so it stays out of the developer's way.
 
 Use `./script/build_and_run.sh --test-manual` when handing the test build to the developer for manual testing. That keeps the separate `CatchTest` bundle/process/app-support identity, but skips the agent-only order-back behavior so the window is easy to find.
 
-After making a visible UI change, almost always launch a test build for the developer to try, preferably with `./script/build_and_run.sh --test-manual` when manual validation is useful. If you choose not to launch one, explain why.
+After making a visible UI change, generally launch a test build for the developer to try with `./script/build_and_run.sh --test-manual` when manual validation is useful. If you choose not to launch one, explain why.
 
 Autonomous `--test` launches do not need a global shortcut. When launching a manually testable test build, pass `CATCH_GLOBAL_HOTKEY` with a shortcut that does not conflict with any other running Catch instance. Prefer Cmd-Ctrl shortcuts, but do not use Cmd-Ctrl-X because Codex uses that combo, and do not use Cmd-Ctrl-V. At minimum, do not use `alt+space`. Put the key combo in parentheses at the end of the orange banner title, for example `CATCH_TEST_BUILD_LABEL="Session Picker (Cmd-Ctrl-C)" CATCH_GLOBAL_HOTKEY=cmd+ctrl+c ./script/build_and_run.sh --test-manual`. After any Agent Turn where you launched a manually testable test build, prominently tell the user the exact key combo for that Catch instance.
+
+Merging a completed feature branch to `main` should not automatically build, install, relaunch, or run anything. Do not run a normal build after commits or merges to `main` unless the user explicitly asks for it.
 
 For routine UI interaction, prefer non-invasive process/window-targeted automation over coordinate clicks:
 
@@ -34,7 +40,6 @@ For routine UI interaction, prefer non-invasive process/window-targeted automati
 - For keyboard navigation, post key events directly to the `CatchTest` process by PID rather than clicking the real desktop.
 - Capture screenshots by CoreGraphics window ID with `screencapture -l <window-id>` rather than by screen rectangle. This can capture the test panel even when it is behind other windows.
 - Avoid coordinate-based mouse clicks unless the behavior under test is specifically real click/focus/activation behavior.
-- After every commit to `main`, install and relaunch the normal build with `./script/build_and_run.sh`.
 
 Useful pattern for finding the test panel window ID:
 
