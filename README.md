@@ -61,6 +61,12 @@ When launching a test build that someone might manually test, pass `CATCH_GLOBAL
 
 ## Verification And Debugging
 
+### Continuous Integration
+
+`.github/workflows/build.yml` runs on pushes to `main` and pull requests to `main`. It selects an installed Xcode 26 toolchain for Swift tools 6.2, then runs `swift build` and `swift test`.
+
+The release packaging workflow stays separate in `.github/workflows/release.yml` and only runs for `v*` tags or manual dispatch. To make the per-commit build block merges, a repository admin still needs to add the `Swift build and test` check to the `main` branch protection rule in GitHub settings.
+
 ### SwiftUI Previews
 
 Open the package in Xcode and select the `CatchKit` scheme before refreshing SwiftUI previews. `CatchKit` is exposed as a dynamic library product so previews can build through a framework scheme; using the `Catch` executable scheme can produce Xcode's `ENABLE_DEBUG_DYLIB` preview error.
