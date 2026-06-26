@@ -11,7 +11,7 @@ let concurrencySettings: [SwiftSetting] = [
 let package = Package(
     name: "Catch",
     platforms: [
-        .macOS(.v14)
+        .macOS(.v26)
     ],
     products: [
         .library(name: "CatchKit", type: .dynamic, targets: ["CatchKit"]),

@@ -15,19 +15,20 @@ Catch behaves like a transient command panel. The window should feel ready for t
 
 ## Prompt Focus
 
-- When Catch is active and its panel is key, the prompt should be the first responder unless the user has moved keyboard selection into the session list.
+- When Catch is active and its panel is key, the prompt should be focused unless the user has moved keyboard selection into the session list.
 - Programmatic prompt-focus requests must not call `NSApp.activate` or otherwise steal focus from another app.
 - Prompt-focus requests are only allowed to focus the text view when Catch is already active, the panel is visible, and the panel is key.
 - Clicking or activating another app must never cause Catch to reactivate itself.
-- Standard macOS text-editing commands must work in the prompt through the normal Edit-menu responder chain, including undo, redo, cut, copy, paste, paste and match style, delete, and select all.
-- Undo and redo must use the prompt text view's native undo manager so ordinary typing can be undone and redone with Command-Z and Shift-Command-Z.
-- Prompt text-editing commands should be implemented as general AppKit responder actions rather than hardcoded keyboard shortcut checks.
+- Standard macOS text-editing commands must work in the prompt through SwiftUI's standard text-editing commands and native text editor, including undo, redo, cut, copy, paste, paste and match style, delete, and select all.
+- Undo and redo must use the native text editor's undo manager so ordinary typing can be undone and redone with Command-Z and Shift-Command-Z.
+- Catch must not route standard text-editing commands through custom key-equivalent handlers, command-router objects, or a hand-enumerated replacement Edit menu. If SwiftUI omits a required standard command, add only that missing command and send its standard selector through the responder chain.
+- Custom prompt command handling must be limited to Catch-specific behavior, such as submitting the prompt or accepting and navigating completions.
 
 ## Session List Focus
 
 - No session row is selected by default.
-- Pressing Down in the prompt selects the first session only when the cursor is on the last visual line of prompt text.
-- Pressing Down in any other prompt line uses normal text-view line navigation.
+- Pressing Down in the prompt selects the first session only when the native text editor's Down move leaves the insertion point unchanged.
+- Pressing Down when the native text editor can move the insertion point uses normal text-editor line navigation, including within soft-wrapped text.
 - Pressing Up from the first selected session clears session selection and returns focus to the end of the prompt.
 - When a session row is first highlighted, the recent-session scroll view must scroll by the minimum possible amount needed to bring that row fully into view.
 - Highlighting a row that is already fully visible must not change the scroll position.

@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_NAME="Catch"
 BUNDLE_ID="xyz.block.catch"
-MIN_SYSTEM_VERSION="14.0"
+MIN_SYSTEM_VERSION="26.0"
 VERSION="${1:-${VERSION:-}}"
 BUILD_NUMBER="${BUILD_NUMBER:-${GITHUB_RUN_NUMBER:-1}}"
 

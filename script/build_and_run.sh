@@ -5,7 +5,7 @@ MODE="${1:-run}"
 PRODUCT_NAME="Catch"
 APP_NAME="Catch"
 BUNDLE_ID="xyz.block.catch"
-MIN_SYSTEM_VERSION="14.0"
+MIN_SYSTEM_VERSION="26.0"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$HOME/Applications"

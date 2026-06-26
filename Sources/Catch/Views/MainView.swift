@@ -2,9 +2,6 @@ import AppKit
 import SwiftUI
 
 private let promptFontSize: CGFloat = 17
-private let promptInputHorizontalInset: CGFloat = 16
-private let promptInputVerticalInset: CGFloat = 12
-private let promptInputTopOverflow: CGFloat = 6
 private let sessionActivitySpinnerSize: CGFloat = 11
 let mainViewWidth: CGFloat = 480
 let mainViewHeight: CGFloat = 385
@@ -18,7 +15,7 @@ public struct MainView: View {
     @State private var model: MainViewModel = MainViewModel.fallbackGooseModels[0]
     @State private var reasoningEffort: ReasoningEffort = .off
     @State private var project: GooseProjectOption = .none
-    @State private var promptSelection = TextSelectionRange()
+    @State private var promptSelection: TextSelection?
     @State private var mentionSelectionIndex = 0
     @State private var suppressedMentionKey: String?
     @State private var gooseAgentCompletions: [MentionCompletion] = []
@@ -26,8 +23,8 @@ public struct MainView: View {
     @State private var composerSelections = ComposerSelectionState()
     @State private var gooseProjects: [GooseProjectOption] = [.none]
     @State private var gooseModels: [MainViewModel] = MainViewModel.fallbackGooseModels
-    @State private var isPromptFocused = false
-    @State private var promptFocusRequest = 0
+    @State private var promptDownMoveGeneration = 0
+    @FocusState private var isPromptFocused: Bool
 
     let keyboardMonitorEnabled: Bool
 
@@ -150,30 +147,54 @@ private extension MainView {
     }
 
     var promptField: some View {
-        ZStack(alignment: .topLeading) {
-            if store.prompt.isEmpty {
-                Text("Ask Goose to…")
-                    .font(.system(size: promptFontSize, weight: .regular))
-                    .foregroundStyle(.tertiary)
-                    .padding(.top, promptInputVerticalInset - promptInputTopOverflow)
-                    .allowsHitTesting(false)
+        TextField(
+            text: $store.prompt,
+            selection: $promptSelection,
+            prompt: Text("Ask Goose to…"),
+            axis: .vertical
+        ) {
+            Text("Prompt")
+        }
+        .font(.system(size: promptFontSize, weight: .regular))
+        .foregroundStyle(.primary)
+        .textFieldStyle(.plain)
+        .lineLimit(...4)
+        .focused($isPromptFocused)
+        .onTapGesture {
+            focusPrompt()
+        }
+        .onKeyPress(.return, phases: [.down, .repeat]) { keyPress in
+            if keyPress.modifiers == .command {
+                submit()
+                return .handled
             }
 
-            PromptTextView(
-                text: $store.prompt,
-                selection: $promptSelection,
-                isFocused: $isPromptFocused,
-                focusRequest: promptFocusRequest,
-                onFocus: focusPrompt,
-                onSubmit: submit,
-                onMove: moveFromPrompt,
-                onAcceptCompletion: acceptSelectedMention
-            )
-            .padding(.horizontal, -promptInputHorizontalInset)
-            .padding(.top, -promptInputTopOverflow)
-            .frame(height: promptFieldHeight)
+            if acceptSelectedMention() {
+                return .handled
+            }
+
+            insertPromptText("\n")
+            return .handled
         }
-        .padding(.top, -4)
+        .onKeyPress(.tab) {
+            acceptSelectedMention() ? .handled : .ignored
+        }
+        .onKeyPress(.upArrow) {
+            guard displayedMention != nil else { return .ignored }
+            moveMentionSelection(direction: .up)
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            if displayedMention != nil {
+                moveMentionSelection(direction: .down)
+                return .handled
+            }
+
+            handOffPromptDownIfNativeMoveStaysPut()
+            return .ignored
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(height: promptFieldHeight)
     }
 
     var controlBar: some View {
@@ -422,20 +443,6 @@ private extension MainView {
         }
     }
 
-    func moveFromPrompt(direction: SelectionDirection, context: PromptMoveContext) -> Bool {
-        if displayedMention != nil {
-            moveMentionSelection(direction: direction)
-            return true
-        }
-
-        guard direction == .down, context.isCursorOnLastLine else {
-            return false
-        }
-
-        selectFirstSession()
-        return store.selectedSessionID != nil
-    }
-
     func moveSessionSelection(direction: SelectionDirection) -> Bool {
         guard !store.sessions.isEmpty else { return false }
 
@@ -465,6 +472,32 @@ private extension MainView {
         return true
     }
 
+    func handOffPromptDownIfNativeMoveStaysPut() {
+        guard let originalSelection = promptSelection?.range(in: store.prompt),
+              originalSelection.isEmpty
+        else { return }
+
+        let originalPrompt = store.prompt
+        let originalCursor = PromptCursorSnapshot(index: originalSelection.lowerBound, in: originalPrompt)
+        promptDownMoveGeneration &+= 1
+        let generation = promptDownMoveGeneration
+
+        DispatchQueue.main.async {
+            guard promptDownMoveGeneration == generation,
+                  isPromptFocused,
+                  store.selectedSessionID == nil,
+                  store.prompt == originalPrompt,
+                  let currentSelection = promptSelection?.range(in: store.prompt),
+                  currentSelection.isEmpty
+            else { return }
+
+            let currentCursor = PromptCursorSnapshot(index: currentSelection.lowerBound, in: store.prompt)
+            if currentCursor == originalCursor {
+                selectFirstSession()
+            }
+        }
+    }
+
     func selectFirstSession() {
         guard let firstSession = store.sessions.first else { return }
         selectSession(firstSession.id)
@@ -482,16 +515,11 @@ private extension MainView {
 
     func requestPromptFocus() {
         isPromptFocused = true
-        promptFocusRequest &+= 1
     }
 
     func focusPromptAtEnd() {
-        let promptLength = (store.prompt as NSString).length
-        promptSelection = TextSelectionRange(location: promptLength, length: 0)
+        promptSelection = TextSelection(insertionPoint: store.prompt.endIndex)
         focusPrompt()
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .focusPromptField, object: nil)
-        }
     }
 
     func acceptSelectedMention() -> Bool {
@@ -519,13 +547,14 @@ private extension MainView {
     func accept(_ completion: MentionCompletion) {
         guard let displayedMention else { return }
 
-        let text = store.prompt as NSString
-        let updated = text.replacingCharacters(in: displayedMention.range, with: "")
+        let cursor = PromptCursorSnapshot(index: displayedMention.range.lowerBound, in: store.prompt)
+        var updated = store.prompt
+        updated.replaceSubrange(displayedMention.range, with: "")
+        updated = updated
             .replacingOccurrences(of: "[ \\t]{2,}", with: " ", options: .regularExpression)
-        let cursorLocation = min(displayedMention.range.location, (updated as NSString).length)
 
         store.prompt = updated
-        promptSelection = TextSelectionRange(location: cursorLocation, length: 0)
+        promptSelection = TextSelection(insertionPoint: cursor.index(in: updated))
         select(completion)
         mentionSelectionIndex = 0
         suppressedMentionKey = nil
@@ -556,21 +585,30 @@ private extension MainView {
         focusPrompt()
     }
 
+    func insertPromptText(_ replacement: String) {
+        let replacementRange = promptSelection?.range(in: store.prompt) ?? store.prompt.endIndex..<store.prompt.endIndex
+        let cursor = PromptCursorSnapshot(index: replacementRange.lowerBound, in: store.prompt)
+            .advanced(by: replacement.count)
+        var updated = store.prompt
+        updated.replaceSubrange(replacementRange, with: replacement)
+        store.prompt = updated
+        promptSelection = TextSelection(insertionPoint: cursor.index(in: updated))
+    }
+
     func showCompletions(for trigger: MentionCompletionKind) {
         if displayedMention?.trigger == trigger {
             focusPrompt()
             return
         }
 
-        let text = store.prompt as NSString
-        let replacementRange = activeMention?.range ?? promptSelection.clamped(to: store.prompt)
+        let replacementRange = activeMention?.range ?? promptSelection?.range(in: store.prompt) ?? store.prompt.endIndex..<store.prompt.endIndex
         let replacement = trigger.symbol
-        let updated = text.replacingCharacters(in: replacementRange, with: replacement)
+        let cursor = PromptCursorSnapshot(index: replacementRange.lowerBound, in: store.prompt)
+            .advanced(by: replacement.count)
+        var updated = store.prompt
+        updated.replaceSubrange(replacementRange, with: replacement)
         store.prompt = updated
-        promptSelection = TextSelectionRange(
-            location: replacementRange.location + (replacement as NSString).length,
-            length: 0
-        )
+        promptSelection = TextSelection(insertionPoint: cursor.index(in: updated))
         mentionSelectionIndex = 0
         suppressedMentionKey = nil
         focusPrompt()
@@ -768,179 +806,23 @@ private struct ComposerSelectionChip: View {
     }
 }
 
-private struct PromptTextView: NSViewRepresentable {
-    @Binding var text: String
-    @Binding var selection: TextSelectionRange
-    @Binding var isFocused: Bool
-    let focusRequest: Int
-    let onFocus: () -> Void
-    let onSubmit: () -> Void
-    let onMove: (SelectionDirection, PromptMoveContext) -> Bool
-    let onAcceptCompletion: () -> Bool
+private struct PromptCursorSnapshot: Equatable {
+    private let offset: Int
 
-    @MainActor
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
+    init(index: String.Index, in text: String) {
+        offset = text.distance(from: text.startIndex, to: index)
     }
 
-    @MainActor
-    func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSScrollView()
-        scrollView.drawsBackground = false
-        scrollView.borderType = .noBorder
-        scrollView.hasVerticalScroller = false
-        scrollView.hasHorizontalScroller = false
-        scrollView.automaticallyAdjustsContentInsets = false
-        scrollView.contentView.drawsBackground = false
-        scrollView.contentView.postsBoundsChangedNotifications = true
-
-        let textView = PromptNSTextView()
-        textView.drawsBackground = false
-        textView.isRichText = false
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        // Keep the AppKit undo manager active so standard Edit > Undo/Redo
-        // actions work through the responder chain like ordinary text fields.
-        textView.allowsUndo = true
-        textView.font = NSFont.systemFont(ofSize: promptFontSize, weight: .regular)
-        textView.textColor = .labelColor
-        // Inset needed to avoid clipping caret and Voice Control glow.
-        textView.textContainerInset = NSSize(width: promptInputHorizontalInset, height: promptInputVerticalInset)
-        textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainer?.widthTracksTextView = true
-        textView.isHorizontallyResizable = false
-        textView.isVerticallyResizable = true
-        textView.autoresizingMask = [.width]
-        textView.delegate = context.coordinator
-        textView.onSubmit = onSubmit
-        textView.onFocusIntent = context.coordinator.focusFromUserInteraction
-        textView.onMove = onMove
-        textView.onAcceptCompletion = onAcceptCompletion
-        textView.string = text
-        textView.setSelectedRange(selection.clamped(to: text))
-
-        scrollView.documentView = textView
-        context.coordinator.textView = textView
-        context.coordinator.startObservingFocusRequests()
-        return scrollView
+    private init(offset: Int) {
+        self.offset = offset
     }
 
-    @MainActor
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        context.coordinator.parent = self
-        context.coordinator.wantsFocus = isFocused
-        let focusRequestChanged = context.coordinator.handledFocusRequest != focusRequest
-        context.coordinator.handledFocusRequest = focusRequest
-
-        guard let textView = scrollView.documentView as? PromptNSTextView else { return }
-        textView.onSubmit = onSubmit
-        textView.onFocusIntent = context.coordinator.focusFromUserInteraction
-        textView.onMove = onMove
-        textView.onAcceptCompletion = onAcceptCompletion
-
-        if textView.string != text {
-            textView.string = text
-        }
-
-        let clampedSelection = selection.clamped(to: textView.string)
-        if textView.selectedRange() != clampedSelection {
-            textView.setSelectedRange(clampedSelection)
-        }
-
-        context.coordinator.synchronizeFocusState(deferFocus: focusRequestChanged)
+    func advanced(by distance: Int) -> PromptCursorSnapshot {
+        PromptCursorSnapshot(offset: offset + distance)
     }
 
-    @MainActor
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        var parent: PromptTextView
-        weak var textView: PromptNSTextView?
-        var wantsFocus = false
-        var handledFocusRequest: Int
-        nonisolated(unsafe) private var focusObserver: NSObjectProtocol?
-
-        init(parent: PromptTextView) {
-            self.parent = parent
-            self.handledFocusRequest = parent.focusRequest
-        }
-
-        deinit {
-            if let focusObserver {
-                NotificationCenter.default.removeObserver(focusObserver)
-            }
-        }
-
-        func startObservingFocusRequests() {
-            guard focusObserver == nil else { return }
-
-            focusObserver = NotificationCenter.default.addObserver(
-                forName: .focusPromptField,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor in
-                    self?.parent.isFocused = true
-                    self?.wantsFocus = true
-                    self?.focusTextView()
-                }
-            }
-        }
-
-        func focusTextView() {
-            guard let textView, let window = textView.window else { return }
-            guard window.isVisible, window.isKeyWindow else { return }
-
-            if window.firstResponder !== textView {
-                window.makeFirstResponder(textView)
-            }
-        }
-
-        func synchronizeFocusState(deferFocus: Bool = false) {
-            if wantsFocus {
-                focusTextView()
-                if deferFocus {
-                    // Native menus can temporarily own first responder while
-                    // their selection binding updates. Reassert focus after the
-                    // current event so standard text commands target the prompt.
-                    DispatchQueue.main.async { [weak self] in
-                        guard let self, self.wantsFocus else { return }
-                        self.focusTextView()
-                    }
-                }
-            } else {
-                resignTextViewFocus()
-            }
-        }
-
-        private func resignTextViewFocus() {
-            guard let textView, let window = textView.window else { return }
-
-            if window.firstResponder === textView {
-                window.makeFirstResponder(nil)
-            }
-        }
-
-        func focusFromUserInteraction() {
-            wantsFocus = true
-            parent.onFocus()
-        }
-
-        func textDidBeginEditing(_ notification: Notification) {
-            focusFromUserInteraction()
-        }
-
-        func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-
-            if parent.text != textView.string {
-                parent.text = textView.string
-            }
-            parent.selection = TextSelectionRange(textView.selectedRange())
-        }
-
-        func textViewDidChangeSelection(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            parent.selection = TextSelectionRange(textView.selectedRange())
-        }
+    func index(in text: String) -> String.Index {
+        text.index(text.startIndex, offsetBy: min(max(0, offset), text.count))
     }
 }
 
