@@ -40,11 +40,15 @@ struct GooseProjectOption: Identifiable, Equatable, Comparable, Sendable {
     }
 
     private static func defaultCWD(for source: GooseSourceEntry) -> String {
-        let artifacts = NSHomeDirectory() + "/goose artifacts"
-        if FileManager.default.fileExists(atPath: artifacts) {
-            return artifacts
+        // `source.path` is the project definition file; Goose2 uses the first
+        // project working dir as cwd.
+        if let projectWorkingDir = source.workingDirs
+            .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .first(where: { !$0.isEmpty })
+        {
+            return projectWorkingDir
         }
 
-        return NSHomeDirectory()
+        return NSHomeDirectory() + "/goose artifacts"
     }
 }

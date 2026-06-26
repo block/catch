@@ -4,6 +4,41 @@ import Testing
 @Suite
 struct GooseServeClientTests {
     @Test
+    func newSessionParamsIncludeProjectMetadataWhenProjectIsSelected() {
+        let configuration = GooseSessionConfiguration(
+            providerID: "databricks_v2",
+            modelID: "openai/gpt-5",
+            cwd: "/Users/test/project",
+            projectID: "sample-project",
+            reasoningEffort: "medium",
+            invokedAgent: nil
+        )
+
+        let params = GooseServeClient.newSessionParams(configuration: configuration).rawValue
+
+        #expect(params["cwd"] as? String == "/Users/test/project")
+        #expect((params["mcpServers"] as? [Any])?.isEmpty == true)
+        #expect(params["_meta"] as? [String: String] == [
+            "provider": "databricks_v2",
+            "projectId": "sample-project"
+        ])
+    }
+
+    @Test
+    func newSessionParamsOmitMetadataWithoutProjectProviderOrPersona() {
+        let configuration = GooseSessionConfiguration(
+            providerID: nil,
+            modelID: nil,
+            cwd: "/Users/test",
+            projectID: nil,
+            reasoningEffort: nil,
+            invokedAgent: nil
+        )
+
+        #expect(GooseServeClient.newSessionParams(configuration: configuration).rawValue["_meta"] == nil)
+    }
+
+    @Test
     func embeddedConfigurationRequiresTokenizedServerURL() {
         #expect(throws: GooseServeClientError.embeddedServerTokenMissing) {
             _ = try GooseServeClient.EmbeddedServerConfiguration(environment: [

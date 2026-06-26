@@ -74,6 +74,7 @@ struct GooseSourceEntry: Identifiable, Equatable, Sendable {
     let writable: Bool
     let title: String?
     let color: String?
+    let workingDirs: [String]
 }
 
 struct GooseProviderDefaults: Equatable, Sendable {
@@ -258,10 +259,6 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
             try? await setConfigOption(sessionID: sessionID, configID: "thinking_effort", value: reasoningEffort)
         }
 
-        if let projectID = configuration.projectID {
-            try await updateProject(sessionID: sessionID, projectID: projectID)
-        }
-
         if let systemPrompt = configuration.invokedAgent?.systemPrompt?.trimmingCharacters(in: .whitespacesAndNewlines),
            !systemPrompt.isEmpty
         {
@@ -319,17 +316,6 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
                 "sessionId": sessionID,
                 "configId": configID,
                 "value": value
-            ],
-            timeout: 30
-        )
-    }
-
-    private func updateProject(sessionID: String, projectID: String) async throws {
-        _ = try await request(
-            method: "_goose/unstable/session/project/update",
-            params: [
-                "sessionId": sessionID,
-                "projectId": projectID
             ],
             timeout: 30
         )
@@ -746,8 +732,17 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
             global: boolValue(object["global"]),
             writable: boolValue(object["writable"]),
             title: properties?["title"] as? String,
-            color: properties?["color"] as? String
+            color: properties?["color"] as? String,
+            workingDirs: stringArray(properties?["workingDirs"])
         )
+    }
+
+    private static func stringArray(_ value: Any?) -> [String] {
+        if let strings = value as? [String] {
+            return strings
+        }
+
+        return (value as? [Any])?.compactMap { $0 as? String } ?? []
     }
 
     private static func decodeProvider(_ object: [String: Any]) -> GooseProviderEntry? {
