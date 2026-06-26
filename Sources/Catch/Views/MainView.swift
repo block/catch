@@ -6,16 +6,16 @@ private let promptInputHorizontalInset: CGFloat = 16
 private let promptInputVerticalInset: CGFloat = 12
 private let promptInputTopOverflow: CGFloat = 6
 private let sessionActivitySpinnerSize: CGFloat = 11
-let sessionCreationConceptWidth: CGFloat = 480
-let sessionCreationConceptHeight: CGFloat = 385
+let mainViewWidth: CGFloat = 480
+let mainViewHeight: CGFloat = 385
 private let promptFieldHeight: CGFloat = 105
 private let gooseModelProviderID = "databricks_v2"
 
 /// Session-first creation UI backed by Goose's `goose serve` ACP+ server.
-public struct SessionCreationConceptView: View {
+public struct MainView: View {
     @Environment(\.openURL) private var openURL
     @EnvironmentObject private var store: SessionStore
-    @State private var model: ConceptModel = ConceptModel.fallbackGooseModels[0]
+    @State private var model: MainViewModel = MainViewModel.fallbackGooseModels[0]
     @State private var reasoningEffort: ReasoningEffort = .off
     @State private var project: GooseProjectOption = .none
     @State private var promptSelection = TextSelectionRange()
@@ -25,7 +25,7 @@ public struct SessionCreationConceptView: View {
     @State private var skillMentionCompletions: [MentionCompletion] = []
     @State private var composerSelections = ComposerSelectionState()
     @State private var gooseProjects: [GooseProjectOption] = [.none]
-    @State private var gooseModels: [ConceptModel] = ConceptModel.fallbackGooseModels
+    @State private var gooseModels: [MainViewModel] = MainViewModel.fallbackGooseModels
     @State private var isPromptFocused = false
     @State private var promptFocusRequest = 0
 
@@ -124,7 +124,7 @@ public struct SessionCreationConceptView: View {
 
 // MARK: - Composer
 
-private extension SessionCreationConceptView {
+private extension MainView {
     var composer: some View {
         VStack(alignment: .leading, spacing: 14) {
             if !selectedComposables.isEmpty {
@@ -196,7 +196,7 @@ private extension SessionCreationConceptView {
 
 // MARK: - Control bar pieces
 
-private extension SessionCreationConceptView {
+private extension MainView {
     var addMenu: some View {
         Menu {
             Button {
@@ -315,7 +315,7 @@ private extension SessionCreationConceptView {
 
 // MARK: - Recent strip
 
-private extension SessionCreationConceptView {
+private extension MainView {
     var completionOrRecentStrip: some View {
         Group {
             if displayedMention != nil {
@@ -362,7 +362,7 @@ private extension SessionCreationConceptView {
                     Button {
                         activateSession(session)
                     } label: {
-                        ConceptRecentRow(
+                        SessionRow(
                             session: session,
                             isSelected: store.selectedSessionID == session.id
                         )
@@ -509,7 +509,7 @@ private extension SessionCreationConceptView {
     }
 
     @discardableResult
-    func activateSession(_ session: CodexSession) -> Bool {
+    func activateSession(_ session: Session) -> Bool {
         guard let url = session.gooseInternalSessionURL else { return false }
         openURL(url)
         NotificationCenter.default.post(name: .hideFloatingWindow, object: nil)
@@ -640,26 +640,26 @@ private extension SessionCreationConceptView {
         }
     }
 
-    func selectedModels(from provider: GooseProviderEntry) -> [ConceptModel] {
+    func selectedModels(from provider: GooseProviderEntry) -> [MainViewModel] {
         provider.models.map { model in
-            ConceptModel(model.name, modelID: model.id, isRecommended: model.recommended)
+            MainViewModel(model.name, modelID: model.id, isRecommended: model.recommended)
         }.deduplicatedByID()
     }
 
-    func selectedModels(from supportedModels: [GooseSupportedModel]) -> [ConceptModel] {
-        ConceptModel.gooseModels(from: supportedModels.map(\.id))
+    func selectedModels(from supportedModels: [GooseSupportedModel]) -> [MainViewModel] {
+        MainViewModel.gooseModels(from: supportedModels.map(\.id))
     }
 
-    func models() -> [ConceptModel] {
-        gooseModels.isEmpty ? ConceptModel.fallbackGooseModels : gooseModels
+    func models() -> [MainViewModel] {
+        gooseModels.isEmpty ? MainViewModel.fallbackGooseModels : gooseModels
     }
 
-    func recommendedModels() -> [ConceptModel] {
+    func recommendedModels() -> [MainViewModel] {
         let recommended = models().filter(\.isRecommended)
         return recommended.isEmpty ? models() : recommended
     }
 
-    func otherModels() -> [ConceptModel] {
+    func otherModels() -> [MainViewModel] {
         let recommendedIDs = Set(recommendedModels().map(\.id))
         return models().filter { !recommendedIDs.contains($0.id) }
     }
@@ -944,8 +944,8 @@ private struct PromptTextView: NSViewRepresentable {
     }
 }
 
-private struct ConceptRecentRow: View {
-    let session: CodexSession
+private struct SessionRow: View {
+    let session: Session
     let isSelected: Bool
 
     var body: some View {
@@ -1063,12 +1063,12 @@ private struct SessionActivitySpinner: View {
 }
 
 private struct ModelConfigurationMenu: View, Equatable {
-    let model: ConceptModel
+    let model: MainViewModel
     let reasoningEffort: ReasoningEffort
-    let recommendedModels: [ConceptModel]
-    let otherModels: [ConceptModel]
+    let recommendedModels: [MainViewModel]
+    let otherModels: [MainViewModel]
     let onSelectReasoning: (ReasoningEffort) -> Void
-    let onSelectModel: (ConceptModel) -> Void
+    let onSelectModel: (MainViewModel) -> Void
 
     // Native macOS menus are sensitive to identity churn while submenus are
     // presented. Ignore action closure identity so unrelated parent updates
@@ -1144,7 +1144,7 @@ private struct ModelConfigurationMenu: View, Equatable {
         )
     }
 
-    private var modelSelection: Binding<ConceptModel> {
+    private var modelSelection: Binding<MainViewModel> {
         Binding(
             get: { model },
             set: { onSelectModel($0) }
@@ -1212,20 +1212,20 @@ private extension View {
     }
 }
 
-#Preview("Session Creation Concept") {
-    SessionCreationConceptPreviewHost()
+#Preview("Main View") {
+    MainViewPreviewHost()
 }
 
-private struct SessionCreationConceptPreviewHost: View {
+private struct MainViewPreviewHost: View {
     @StateObject private var store = SessionStore(appSupportDirectoryName: "CatchPreview")
 
     var body: some View {
-        SessionCreationConceptView(keyboardMonitorEnabled: false)
+        MainView(keyboardMonitorEnabled: false)
             .environmentObject(store)
-            .frame(width: sessionCreationConceptWidth, height: sessionCreationConceptHeight)
+            .frame(width: mainViewWidth, height: mainViewHeight)
             .onAppear {
                 store.isConnected = true
-                store.sessions = CodexSession.previewSessions
+                store.sessions = Session.previewSessions
             }
     }
 }

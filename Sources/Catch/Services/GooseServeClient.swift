@@ -218,7 +218,7 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         )
     }
 
-    func listSessions() async throws -> [CodexSession] {
+    func listSessions() async throws -> [Session] {
         let response = try await request(
             method: "session/list",
             params: [
@@ -791,7 +791,7 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         }
     }
 
-    private func decodeSession(_ object: JSONObject) -> CodexSession? {
+    private func decodeSession(_ object: JSONObject) -> Session? {
         guard let id = object["sessionId"] as? String ?? object["id"] as? String else {
             return nil
         }
@@ -819,7 +819,7 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         let providerID = meta?["providerId"] as? String
         let modelID = meta?["modelId"] as? String
 
-        return CodexSession(
+        return Session(
             provider: .goose,
             sessionID: id,
             cwd: cwd,

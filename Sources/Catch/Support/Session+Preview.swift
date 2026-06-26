@@ -1,9 +1,9 @@
 import Foundation
 
-extension CodexSession {
-    static var previewSessions: [CodexSession] {
+extension Session {
+    static var previewSessions: [Session] {
         [
-            CodexSession(
+            Session(
                 provider: .goose,
                 sessionID: "preview-goose-1",
                 cwd: "~/Development/catch",
@@ -12,7 +12,7 @@ extension CodexSession {
                 status: .working,
                 lastEvent: "Working"
             ),
-            CodexSession(
+            Session(
                 provider: .goose,
                 sessionID: "preview-goose-2",
                 cwd: "~/Development/catch",
@@ -21,7 +21,7 @@ extension CodexSession {
                 status: .idle,
                 lastEvent: "Idle"
             ),
-            CodexSession(
+            Session(
                 provider: .goose,
                 sessionID: "preview-goose-4",
                 cwd: "~/Development/catch",
@@ -30,7 +30,7 @@ extension CodexSession {
                 status: .idle,
                 lastEvent: "Idle"
             ),
-            CodexSession(
+            Session(
                 provider: .goose,
                 sessionID: "preview-goose-5",
                 cwd: "~/Development/catch",
@@ -39,7 +39,7 @@ extension CodexSession {
                 status: .idle,
                 lastEvent: "Idle"
             ),
-            CodexSession(
+            Session(
                 provider: .goose,
                 sessionID: "preview-goose-3",
                 cwd: "~/Development/catch",
@@ -48,7 +48,7 @@ extension CodexSession {
                 status: .idle,
                 lastEvent: "Idle"
             ),
-            CodexSession(
+            Session(
                 provider: .goose,
                 sessionID: "preview-goose-6",
                 cwd: "~/Development/catch",

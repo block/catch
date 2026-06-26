@@ -18,7 +18,7 @@ struct SessionTitleResolverTests {
     @Test
     func provisionalTitleSurvivesPlaceholderUntilGeneratedTitleArrives() {
         var titles = ProvisionalSessionTitles()
-        let session = CodexSession(
+        let session = Session(
             provider: .goose,
             sessionID: "session-1",
             cwd: "/tmp",
@@ -32,7 +32,7 @@ struct SessionTitleResolverTests {
 
         #expect(titles.resolvedTitle(for: session) == "Verbatim submitted prompt")
 
-        let generatedSession = CodexSession(
+        let generatedSession = Session(
             provider: .goose,
             sessionID: "session-1",
             cwd: "/tmp",

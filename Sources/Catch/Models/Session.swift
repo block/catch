@@ -9,7 +9,7 @@ enum AgentProvider: String {
     case goose
 }
 
-struct CodexSession: Identifiable, Equatable {
+struct Session: Identifiable, Equatable {
     var provider: AgentProvider
     var sessionID: String
     var cwd: String
@@ -32,7 +32,7 @@ struct CodexSession: Identifiable, Equatable {
         lastMessageAt ?? updatedAt
     }
 
-    static func isMoreActive(_ lhs: CodexSession, than rhs: CodexSession) -> Bool {
+    static func isMoreActive(_ lhs: Session, than rhs: Session) -> Bool {
         switch (lhs.activityAt, rhs.activityAt) {
         case (.some(let left), .some(let right)) where left != right:
             return left > right
@@ -99,7 +99,7 @@ struct ProvisionalSessionTitles {
         titlesBySessionID[sessionID] = title
     }
 
-    mutating func resolvedTitle(for listedSession: CodexSession) -> String {
+    mutating func resolvedTitle(for listedSession: Session) -> String {
         guard let provisionalTitle = titlesBySessionID[listedSession.id] else {
             return listedSession.title
         }

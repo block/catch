@@ -5,7 +5,7 @@ import Testing
 struct GooseModelMenuTests {
     @Test
     func supportedGooseModelsIncludeFableAndFilterDatabricksIDs() {
-        let models = ConceptModel.gooseModels(from: [
+        let models = MainViewModel.gooseModels(from: [
             "databricks-gpt-5-5",
             "goose-claude-fable-5",
             "goose-gpt-5-5"
@@ -23,7 +23,7 @@ struct GooseModelMenuTests {
 
     @Test
     func recommendedModelsAreLatestPerFamily() {
-        let models = ConceptModel.gooseModels(from: [
+        let models = MainViewModel.gooseModels(from: [
             "goose-claude-4-6-sonnet",
             "goose-claude-4-7-opus",
             "goose-claude-opus-4-8",

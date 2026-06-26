@@ -1,6 +1,6 @@
 import Foundation
 
-struct ConceptModel: Identifiable, Equatable, Hashable, Sendable {
+struct MainViewModel: Identifiable, Equatable, Hashable, Sendable {
     static let fallbackGooseModelIDs = [
         "goose-claude-4-6-sonnet",
         "goose-claude-4-7-opus",
@@ -24,7 +24,7 @@ struct ConceptModel: Identifiable, Equatable, Hashable, Sendable {
         self.isRecommended = isRecommended
     }
 
-    static func gooseModels(from ids: [String]) -> [ConceptModel] {
+    static func gooseModels(from ids: [String]) -> [MainViewModel] {
         let parsedModels = ids.compactMap(ParsedGooseModel.init(id:))
         let latestModelByFamily = Dictionary(grouping: parsedModels, by: \.familyKey)
             .compactMapValues { models in
@@ -35,7 +35,7 @@ struct ConceptModel: Identifiable, Equatable, Hashable, Sendable {
 
         return parsedModels
             .map { parsed in
-                ConceptModel(
+                MainViewModel(
                     parsed.displayName,
                     modelID: parsed.id,
                     isRecommended: latestModelByFamily[parsed.familyKey] == parsed.id
@@ -112,10 +112,10 @@ struct ParsedGooseModel {
     }
 }
 
-extension Array where Element == ConceptModel {
-    func deduplicatedByID() -> [ConceptModel] {
+extension Array where Element == MainViewModel {
+    func deduplicatedByID() -> [MainViewModel] {
         var seen: Set<String> = []
-        var unique: [ConceptModel] = []
+        var unique: [MainViewModel] = []
 
         for model in self where seen.insert(model.id).inserted {
             unique.append(model)

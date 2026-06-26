@@ -3,7 +3,7 @@ import SwiftUI
 
 @MainActor
 public final class FloatingWindowController: NSObject {
-    private let panelSize = NSSize(width: sessionCreationConceptWidth, height: sessionCreationConceptHeight)
+    private let panelSize = NSSize(width: mainViewWidth, height: mainViewHeight)
     private let store: SessionStore
     private let isTestBuild: Bool
     private let testWindowMode: TestWindowMode

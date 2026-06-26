@@ -78,8 +78,8 @@ struct SessionStoreTests {
         updatedAt: Date = Date(timeIntervalSinceReferenceDate: 0),
         lastMessageAt: Date? = nil,
         isArchived: Bool = false
-    ) -> CodexSession {
-        CodexSession(
+    ) -> Session {
+        Session(
             provider: .goose,
             sessionID: id,
             cwd: "/tmp",

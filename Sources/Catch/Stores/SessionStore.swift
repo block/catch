@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 public final class SessionStore: ObservableObject {
-    @Published var sessions: [CodexSession] = []
+    @Published var sessions: [Session] = []
     @Published var selectedSessionID: String? {
         didSet {
             pruneSelection()
@@ -15,7 +15,7 @@ public final class SessionStore: ObservableObject {
     private let workspaceURL: URL
     private let gooseClient: GooseServeClient
     private var refreshTask: Task<Void, Never>?
-    private var cachedSessionsByID: [String: CodexSession] = [:]
+    private var cachedSessionsByID: [String: Session] = [:]
     private var lastActivityBySessionID: [String: Date] = [:]
     private var provisionalTitles = ProvisionalSessionTitles()
     private let workingStatusTimeout: TimeInterval = 60
@@ -30,7 +30,7 @@ public final class SessionStore: ObservableObject {
         workspaceURL = url
     }
 
-    var selectedSession: CodexSession? {
+    var selectedSession: Session? {
         sessions.first { $0.id == selectedSessionID }
     }
 
@@ -91,7 +91,7 @@ public final class SessionStore: ObservableObject {
         do {
             let sessionID = try await gooseClient.createSession(configuration: configuration)
             let now = Date()
-            let newSession = CodexSession(
+            let newSession = Session(
                 provider: .goose,
                 sessionID: sessionID,
                 cwd: configuration.cwd,
@@ -140,9 +140,9 @@ public final class SessionStore: ObservableObject {
         }
     }
 
-    func mergeListedSessions(_ listed: [CodexSession]) {
+    func mergeListedSessions(_ listed: [Session]) {
         let now = Date()
-        var byID: [String: CodexSession] = [:]
+        var byID: [String: Session] = [:]
 
         for listedSession in listed {
             var session = listedSession
@@ -169,7 +169,7 @@ public final class SessionStore: ObservableObject {
         publishVisibleSessions()
     }
 
-    private func upsert(_ session: CodexSession) {
+    private func upsert(_ session: Session) {
         cachedSessionsByID[session.id] = session
 
         if session.status == .working {
@@ -249,7 +249,7 @@ public final class SessionStore: ObservableObject {
     private func publishVisibleSessions() {
         sessions = cachedSessionsByID.values
             .filter { !$0.isArchived }
-            .sorted(by: CodexSession.isMoreActive)
+            .sorted(by: Session.isMoreActive)
         pruneSelection()
     }
 }

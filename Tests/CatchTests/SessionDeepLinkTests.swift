@@ -6,7 +6,7 @@ import Testing
 struct SessionDeepLinkTests {
     @Test
     func buildsGooseInternalSessionURL() {
-        let session = CodexSession(
+        let session = Session(
             provider: .goose,
             sessionID: "abc-123",
             cwd: "",
@@ -21,7 +21,7 @@ struct SessionDeepLinkTests {
 
     @Test
     func encodesSessionIDAsSinglePathSegment() {
-        let session = CodexSession(
+        let session = Session(
             provider: .goose,
             sessionID: "id/with spaces",
             cwd: "",
@@ -36,7 +36,7 @@ struct SessionDeepLinkTests {
 
     @Test
     func ignoresBlankSessionID() {
-        let session = CodexSession(
+        let session = Session(
             provider: .goose,
             sessionID: "  ",
             cwd: "",
