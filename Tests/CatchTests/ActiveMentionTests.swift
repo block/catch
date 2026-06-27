@@ -56,6 +56,16 @@ struct ActiveMentionTests {
     }
 
     @Test
+    func ignoresMultilineSelectionFromPreviousPromptValue() {
+        let previousText = "first line\nsecond line\nthird line"
+        let currentText = "first line\nsecond line"
+        let staleSelection = TextSelection(insertionPoint: previousText.endIndex)
+
+        #expect(staleSelection.range(in: currentText) == nil)
+        #expect(ActiveMention.detect(in: currentText, selection: staleSelection) == nil)
+    }
+
+    @Test
     func ignoresSelectionWhoseOffsetFallsInsideDifferentCharacterEncoding() {
         let previousText = "ab"
         let currentText = "é"
@@ -64,5 +74,25 @@ struct ActiveMentionTests {
 
         #expect(staleSelection.range(in: currentText) == nil)
         #expect(ActiveMention.detect(in: currentText, selection: staleSelection) == nil)
+    }
+
+    @Test
+    func ignoresSelectionInsideCurrentPromptCharacterBoundary() {
+        let text = "🙂"
+        let interiorUTF16Index = String.Index(utf16Offset: 1, in: text)
+        let selection = TextSelection(insertionPoint: interiorUTF16Index)
+
+        #expect(selection.range(in: text) == nil)
+        #expect(ActiveMention.detect(in: text, selection: selection) == nil)
+    }
+
+    @Test
+    func ignoresSelectionPastCurrentPromptEnd() {
+        let text = "abc"
+        let outOfBoundsIndex = String.Index(utf16Offset: 100, in: text)
+        let selection = TextSelection(insertionPoint: outOfBoundsIndex)
+
+        #expect(selection.range(in: text) == nil)
+        #expect(ActiveMention.detect(in: text, selection: selection) == nil)
     }
 }

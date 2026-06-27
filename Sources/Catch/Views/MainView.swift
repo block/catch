@@ -173,8 +173,7 @@ private extension MainView {
                 return .handled
             }
 
-            insertPromptText("\n")
-            return .handled
+            return .ignored
         }
         .onKeyPress(.tab) {
             acceptSelectedMention() ? .handled : .ignored
@@ -583,16 +582,6 @@ private extension MainView {
             composerSelections.skills.removeAll { $0.id == selection.id }
         }
         focusPrompt()
-    }
-
-    func insertPromptText(_ replacement: String) {
-        let replacementRange = promptSelection?.range(in: store.prompt) ?? store.prompt.endIndex..<store.prompt.endIndex
-        let cursor = PromptCursorSnapshot(index: replacementRange.lowerBound, in: store.prompt)
-            .advanced(by: replacement.count)
-        var updated = store.prompt
-        updated.replaceSubrange(replacementRange, with: replacement)
-        store.prompt = updated
-        promptSelection = TextSelection(insertionPoint: cursor.index(in: updated))
     }
 
     func showCompletions(for trigger: MentionCompletionKind) {

@@ -64,15 +64,22 @@ extension TextSelection {
 
 private extension Range where Bound == String.Index {
     func valid(in text: String) -> Range<String.Index>? {
-        guard let lowerUTF16 = lowerBound.samePosition(in: text.utf16),
-              let upperUTF16 = upperBound.samePosition(in: text.utf16),
-              let lower = String.Index(lowerUTF16, within: text),
-              let upper = String.Index(upperUTF16, within: text),
-              lower <= upper
+        // SwiftUI can briefly publish a TextSelection from the previous text
+        // value while AppKit is still applying an edit. Only use indices that
+        // are already valid character boundaries in the current prompt.
+        guard text.containsIndexBoundary(lowerBound),
+              text.containsIndexBoundary(upperBound),
+              lowerBound <= upperBound
         else {
             return nil
         }
 
-        return lower..<upper
+        return lowerBound..<upperBound
+    }
+}
+
+private extension String {
+    func containsIndexBoundary(_ index: Index) -> Bool {
+        index == endIndex || indices.contains(index)
     }
 }
