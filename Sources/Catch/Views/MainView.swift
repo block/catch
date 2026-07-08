@@ -150,7 +150,7 @@ private extension MainView {
         TextField(
             text: $store.prompt,
             selection: $promptSelection,
-            prompt: Text("Chat with Goose, @ for agents, or / for skills"),
+            prompt: Text("Chat with Berd, @ for agents, or / for skills"),
             axis: .vertical
         ) {
             Text("Prompt")
