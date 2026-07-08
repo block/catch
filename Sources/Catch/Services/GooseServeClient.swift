@@ -521,6 +521,8 @@ final class GooseServeClient: NSObject, @unchecked Sendable {
         let session = URLSession(configuration: .default, delegate: delegate, delegateQueue: nil)
         self.session = session
         let task = session.webSocketTask(with: try webSocketURL())
+        // Large ACP metadata responses otherwise close the websocket with "Message too long".
+        task.maximumMessageSize = 64 * 1024 * 1024
         webSocketTask = task
 
         task.resume()
