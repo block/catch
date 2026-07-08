@@ -538,7 +538,7 @@ private extension MainView {
 
     @discardableResult
     func activateSession(_ session: Session) -> Bool {
-        guard let url = session.gooseInternalSessionURL else { return false }
+        guard let url = session.berdSessionURL else { return false }
         openURL(url)
         NotificationCenter.default.post(name: .hideFloatingWindow, object: nil)
         return true

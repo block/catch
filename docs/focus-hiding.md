@@ -42,9 +42,9 @@ Catch behaves like a transient command panel. The window should feel ready for t
 
 ## Session Activation
 
-- Pressing Return while a session row is highlighted opens that session in Goose through `goose-internal://session/<session-id>`.
+- Pressing Return while a session row is highlighted opens that session in Berd through `berd://session/<session-id>`.
 - Clicking a session row opens the session immediately instead of only selecting the row.
-- Session IDs in Goose deep links must be percent-encoded as a single URL path segment.
+- Session IDs in Berd deep links must be percent-encoded as a single URL path segment.
 - Opening a session hides the Catch panel using the same direct order-out path as Escape.
 
 ## Session Creation

@@ -5,7 +5,7 @@ import Testing
 @Suite
 struct SessionDeepLinkTests {
     @Test
-    func buildsGooseInternalSessionURL() {
+    func buildsBerdSessionURL() {
         let session = Session(
             provider: .goose,
             sessionID: "abc-123",
@@ -16,7 +16,7 @@ struct SessionDeepLinkTests {
             lastEvent: ""
         )
 
-        #expect(session.gooseInternalSessionURL?.absoluteString == "goose-internal://session/abc-123")
+        #expect(session.berdSessionURL?.absoluteString == "berd://session/abc-123")
     }
 
     @Test
@@ -31,7 +31,7 @@ struct SessionDeepLinkTests {
             lastEvent: ""
         )
 
-        #expect(session.gooseInternalSessionURL?.absoluteString == "goose-internal://session/id%2Fwith%20spaces")
+        #expect(session.berdSessionURL?.absoluteString == "berd://session/id%2Fwith%20spaces")
     }
 
     @Test
@@ -46,6 +46,6 @@ struct SessionDeepLinkTests {
             lastEvent: ""
         )
 
-        #expect(session.gooseInternalSessionURL == nil)
+        #expect(session.berdSessionURL == nil)
     }
 }

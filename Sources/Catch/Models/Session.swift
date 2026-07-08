@@ -48,7 +48,7 @@ struct Session: Identifiable, Equatable {
         }
     }
 
-    var gooseInternalSessionURL: URL? {
+    var berdSessionURL: URL? {
         let trimmedSessionID = sessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedSessionID.isEmpty,
               let encodedSessionID = trimmedSessionID.addingPercentEncoding(withAllowedCharacters: .urlPathSegmentAllowed)
@@ -56,7 +56,7 @@ struct Session: Identifiable, Equatable {
             return nil
         }
 
-        return URL(string: "goose-internal://session/\(encodedSessionID)")
+        return URL(string: "berd://session/\(encodedSessionID)")
     }
 }
 
